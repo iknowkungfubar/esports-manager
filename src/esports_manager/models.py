@@ -158,3 +158,56 @@ class MatchResult:
 
     def is_draw(self) -> bool:
         return self.winner == "draw"
+
+
+class BracketType(str, Enum):
+    """Type of tournament bracket."""
+
+    SINGLE_ELIMINATION = "single-elimination"
+    DOUBLE_ELIMINATION = "double-elimination"  # Future
+    ROUND_ROBIN = "round-robin"  # Future
+
+
+class TournamentStatus(str, Enum):
+    """Status of a tournament."""
+
+    UPCOMING = "upcoming"
+    IN_PROGRESS = "in-progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+@dataclass
+class Tournament:
+    """A tournament event."""
+
+    id: int | None = None
+    name: str = ""
+    game_title: str = "other"
+    bracket_type: BracketType = BracketType.SINGLE_ELIMINATION
+    status: TournamentStatus = TournamentStatus.UPCOMING
+    max_teams: int = 8
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass
+class TournamentTeam:
+    """A team registered in a tournament."""
+
+    tournament_id: int
+    team_name: str
+    seed: int = 0  # 0 = unseeded
+
+
+@dataclass
+class BracketSlot:
+    """A slot in a tournament bracket (one match position)."""
+
+    tournament_id: int
+    round: int  # 0 = final, 1 = semi-finals, etc.
+    position: int  # Position within the round
+    team1_name: str = ""
+    team2_name: str = ""
+    winner: str = ""  # team1, team2, or empty
+    score: str = ""  # "3-1" format
+    match_id: int | None = None  # Link to match record

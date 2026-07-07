@@ -140,6 +140,39 @@ def _build_parser() -> argparse.ArgumentParser:
     record = sub.add_parser("record", help="Show team's W/L/T record")
     record.add_argument("team", type=str, help="Team name")
 
+    # tournament commands
+    tour = sub.add_parser("tournament", help="Manage tournaments")
+    ts = tour.add_subparsers(dest="tournament_command")
+
+    tc = ts.add_parser("create", help="Create a tournament")
+    tc.add_argument("name", type=str, help="Tournament name")
+    tc.add_argument("--game", type=str, default="other", help="Game title")
+    tc.add_argument("--max-teams", type=int, default=8, help="Max teams")
+
+    ts.add_parser("list", help="List tournaments")
+
+    t_reg = ts.add_parser("register-team", help="Register a team")
+    t_reg.add_argument("tournament_id", type=int, help="Tournament ID")
+    t_reg.add_argument("--team", type=str, required=True, help="Team name")
+    t_reg.add_argument("--seed", type=int, default=0, help="Seed number")
+
+    t_unreg = ts.add_parser("drop-team", help="Remove a team from tournament")
+    t_unreg.add_argument("tournament_id", type=int, help="Tournament ID")
+    t_unreg.add_argument("--team", type=str, required=True, help="Team name")
+
+    t_start = ts.add_parser("start", help="Generate bracket and start tournament")
+    t_start.add_argument("tournament_id", type=int, help="Tournament ID")
+
+    t_bracket = ts.add_parser("bracket", help="View tournament bracket")
+    t_bracket.add_argument("tournament_id", type=int, help="Tournament ID")
+
+    t_result = ts.add_parser("record-result", help="Record bracket match result")
+    t_result.add_argument("tournament_id", type=int, help="Tournament ID")
+    t_result.add_argument("--round", type=int, required=True, help="Round number")
+    t_result.add_argument("--position", type=int, required=True, help="Position in round")
+    t_result.add_argument("--winner", type=str, required=True, help="team1 or team2")
+    t_result.add_argument("--score", type=str, default="", help="Score (e.g. 3-1)")
+
     # dashboard
     dash = sub.add_parser("dashboard", help="Start web dashboard")
     dash.add_argument("--host", type=str, default="127.0.0.1", help="Host (default: 127.0.0.1)")
@@ -463,6 +496,141 @@ def _cmd_record(args: argparse.Namespace) -> None:
     console.print(f"  Total: {rec['total']} match(es)")
 
 
+# ---------------------------------------------------------------------------
+# Tournament commands
+# ---------------------------------------------------------------------------
+
+
+def _cmd_tournament(args: argparse.Namespace) -> None:
+    """Dispatch tournament subcommands."""
+    from esports_manager.db import (
+        create_tournament,
+        get_tournament,
+        list_tournament_teams,
+        list_tournaments,
+        load_bracket_slots,
+        register_tournament_team,
+        save_bracket_slots,
+        unregister_tournament_team,
+        update_tournament_status,
+    )
+    from esports_manager.models import Tournament, TournamentTeam
+
+    if args.tournament_command == "create":
+        t = Tournament(name=args.name, game_title=args.game, max_teams=args.max_teams)
+        conn = get_connection()
+        tid = create_tournament(conn, t)
+        conn.close()
+        console.print(f"[green]✓[/green] Tournament [bold]{args.name}[/bold] created (ID: {tid})")
+
+    elif args.tournament_command == "list":
+        conn = get_connection()
+        tournaments = list_tournaments(conn)
+        conn.close()
+        if not tournaments:
+            console.print("[yellow]No tournaments created yet.[/yellow]")
+            return
+        table = Table(title="Tournaments")
+        table.add_column("ID", justify="right")
+        table.add_column("Name", style="cyan")
+        table.add_column("Game")
+        table.add_column("Status")
+        table.add_column("Teams", justify="right")
+        for t in tournaments:
+            conn2 = get_connection()
+            teams = list_tournament_teams(conn2, t.id)
+            conn2.close()
+            table.add_row(str(t.id), t.name, t.game_title, t.status.value, str(len(teams)))
+        console.print(table)
+
+    elif args.tournament_command == "register-team":
+        conn = get_connection()
+        register_tournament_team(conn, TournamentTeam(
+            tournament_id=args.tournament_id, team_name=args.team, seed=args.seed,
+        ))
+        conn.close()
+        console.print(f"[green]✓[/green] [bold]{args.team}[/bold] registered for tournament #{args.tournament_id}")
+
+    elif args.tournament_command == "drop-team":
+        conn = get_connection()
+        unregister_tournament_team(conn, args.tournament_id, args.team)
+        conn.close()
+        console.print(f"[green]✓[/green] [bold]{args.team}[/bold] dropped from tournament #{args.tournament_id}")
+
+    elif args.tournament_command == "start":
+        from esports_manager.bracket import generate_bracket
+        conn = get_connection()
+        teams = list_tournament_teams(conn, args.tournament_id)
+        if len(teams) < 2:
+            conn.close()
+            console.print("[red]✗[/red] Need at least 2 teams registered to start.")
+            return
+        team_names = [t.team_name for t in teams]
+        bracket = generate_bracket(team_names)
+        save_bracket_slots(conn, args.tournament_id, bracket)
+        update_tournament_status(conn, args.tournament_id, "in-progress")
+        conn.close()
+        console.print(f"[green]✓[/green] Tournament #{args.tournament_id} started with {len(teams)} teams, {len(bracket)} matches")
+
+    elif args.tournament_command == "bracket":
+        from esports_manager.bracket import get_tournament_winner
+        conn = get_connection()
+        tournament = get_tournament(conn, args.tournament_id)
+        slots = load_bracket_slots(conn, args.tournament_id)
+        teams = list_tournament_teams(conn, args.tournament_id)
+        conn.close()
+
+        if tournament is None:
+            console.print(f"[red]✗[/red] Tournament #{args.tournament_id} not found")
+            return
+
+        console.print(f"[bold]Tournament: {tournament.name}[/bold] ({tournament.game_title})")
+        console.print(f"Status: {tournament.status.value} | Teams: {len(teams)}")
+        console.print("")
+
+        if not slots:
+            console.print("[yellow]Bracket not yet generated. Start the tournament first.[/yellow]")
+            return
+
+        # Group by round
+        from itertools import groupby
+        slots_sorted = sorted(slots, key=lambda s: (-s["round"], s["position"]))
+        for rnd, group in groupby(slots_sorted, key=lambda s: s["round"]):
+            round_slots = list(group)
+            round_name = round_slots[0].get("round_name", f"Round {rnd}") if "round_name" in round_slots[0] else f"Round {rnd}"
+            console.print(f"\n[bold]{round_name}[/bold]")
+            for s in round_slots:
+                t1 = s["team1_name"] or "TBD"
+                t2 = s["team2_name"] or "TBD"
+                status = f" → [green]{s['winner']}[/green]" if s["winner"] else ""
+                console.print(f"  {t1} vs {t2}{status}")
+
+        winner = get_tournament_winner(slots)
+        if winner:
+            console.print(f"\n[bold green]🏆 Champion: {winner}[/bold green]")
+
+    elif args.tournament_command == "record-result":
+        from esports_manager.bracket import advance_winner
+        conn = get_connection()
+        slots = load_bracket_slots(conn, args.tournament_id)
+        if not slots:
+            conn.close()
+            console.print("[red]✗[/red] Bracket not generated yet. Start the tournament first.")
+            return
+        updated = advance_winner(slots, args.round, args.position, args.winner, args.score)
+        save_bracket_slots(conn, args.tournament_id, updated)
+        # Check if tournament is complete
+        from esports_manager.bracket import is_bracket_complete
+        if is_bracket_complete(slots):
+            update_tournament_status(conn, args.tournament_id, "completed")
+            console.print("[green]✓[/green] Tournament completed!")
+        conn.close()
+        console.print(f"[green]✓[/green] Result recorded for tournament #{args.tournament_id}")
+
+    else:
+        console.print("[yellow]Unknown tournament subcommand[/yellow]")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     parser = _build_parser()
@@ -512,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
                 _cmd_match_delete(args)
         elif args.command == "record":
             _cmd_record(args)
+        elif args.command == "tournament":
+            _cmd_tournament(args)
         else:
             parser.print_help()
     except Exception as e:

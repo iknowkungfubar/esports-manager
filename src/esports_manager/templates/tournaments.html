@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tournaments — eSports Manager</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root { --bg: #0f1117; --bg-card: #1a1d27; --bg-hover: #232638; --text: #e1e4ed; --text-dim: #8b8fa3; --border: #2a2d3a; --green: #34d399; --yellow: #fbbf24; --blue: #60a5fa; --accent: #6366f1; --radius: 8px; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; }
+        h1 { margin-bottom: 1.5rem; }
+        .tournament-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .tournament-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+        .tournament-card h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+        .tournament-card .meta { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 0.25rem; }
+        .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; background: var(--bg-hover); }
+        .badge.upcoming { background: rgba(96,165,250,0.15); color: var(--blue); }
+        .badge.in-progress { background: rgba(251,191,36,0.15); color: var(--yellow); }
+        .badge.completed { background: rgba(52,211,153,0.15); color: var(--green); }
+        a { color: var(--blue); text-decoration: none; }
+        .back { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1.5rem; display: block; }
+        .empty { text-align: center; padding: 3rem; color: var(--text-dim); }
+    </style>
+</head>
+<body>
+    <a href="/" class="back">← Back to Dashboard</a>
+    <h1>🏆 Tournaments</h1>
+    <div class="tournament-grid" id="tournament-grid"></div>
+
+    <script>
+    async function load() {
+        const res = await fetch('/api/tournaments');
+        const data = await res.json();
+        const grid = document.getElementById('tournament-grid');
+        if (!data.tournaments || data.tournaments.length === 0) {
+            grid.innerHTML = '<p class="empty">No tournaments yet. Create one with <code>esports tournament create</code>.</p>';
+            return;
+        }
+        grid.innerHTML = data.tournaments.map(t => `
+            <div class="tournament-card">
+                <h3>${t.name}</h3>
+                <div class="meta">${t.game_title}</div>
+                <div class="meta">${t.team_count}/${t.max_teams} teams</div>
+                <span class="badge ${t.status}">${t.status}</span>
+            </div>
+        `).join('');
+    }
+    load();
+    </script>
+</body>
+</html>

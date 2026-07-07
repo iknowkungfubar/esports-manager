@@ -48,6 +48,12 @@
             <div class="card"><div class="num">${teams.teams.reduce((s,t) => s + t.roster_count, 0)}</div><div class="lbl">Roster Spots</div></div>
         `;
 
+        // Tournament count
+        const toursRes = await fetch('/api/tournaments');
+        const tours = await toursRes.json();
+        const cards = document.getElementById('summary-cards');
+        cards.innerHTML += `<div class="card"><div class="num" style="color:var(--yellow);">${tours.tournaments.length}</div><div class="lbl">Tournaments</div></div>`;
+
         // Team cards
         const grid = document.getElementById('team-grid');
         if (teams.teams.length === 0) {

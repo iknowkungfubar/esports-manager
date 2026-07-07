@@ -135,6 +135,27 @@ def create_app() -> FastAPI:
         html = _read_template("team.html").replace("{{ team_name }}", name)
         return HTMLResponse(content=html)
 
+    @app.get("/api/tournaments")
+    def api_tournaments():
+        """List tournaments."""
+        from esports_manager.db import list_tournaments, list_tournament_teams
+        conn = _conn()
+        tournaments = list_tournaments(conn)
+        result = []
+        for t in tournaments:
+            teams = list_tournament_teams(conn, t.id)
+            result.append({
+                "id": t.id, "name": t.name, "game_title": t.game_title,
+                "status": t.status.value, "max_teams": t.max_teams,
+                "team_count": len(teams),
+            })
+        conn.close()
+        return {"tournaments": result}
+
+    @app.get("/tournaments", response_class=HTMLResponse)
+    def tournaments_page():
+        return HTMLResponse(content=_read_template("tournaments.html"))
+
     return app
 
 

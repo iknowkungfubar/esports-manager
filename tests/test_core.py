@@ -432,3 +432,137 @@ class TestMatchCRUD:
         args = p.parse_args(["record", "T1"])
         assert args.command == "record"
         assert args.team == "T1"
+
+
+# ---------------------------------------------------------------------------
+# Bracket engine tests
+# ---------------------------------------------------------------------------
+
+
+class TestBracketEngine:
+    def test_generate_4_team_bracket(self):
+        from esports_manager.bracket import generate_bracket
+        teams = ["TeamA", "TeamB", "TeamC", "TeamD"]
+        bracket = generate_bracket(teams)
+        assert len(bracket) >= 3  # 2 semis + 1 final
+        rounds = set(s["round"] for s in bracket)
+        assert 0 in rounds  # First round exists
+
+    def test_generate_8_team_bracket(self):
+        from esports_manager.bracket import generate_bracket
+        teams = [f"Team{i}" for i in range(8)]
+        bracket = generate_bracket(teams)
+        assert len(bracket) >= 7  # 4 quarters + 2 semis + 1 final
+
+    def test_generate_3_team_with_bye(self):
+        from esports_manager.bracket import generate_bracket
+        bracket = generate_bracket(["T1", "T2", "T3"])
+        # 3 teams -> padded to 4, first round has 2 matches
+        first_round = [s for s in bracket if s["round"] == 0]
+        assert len(first_round) == 2
+
+    def test_advance_winner(self):
+        from esports_manager.bracket import advance_winner, generate_bracket
+        bracket = generate_bracket(["T1", "T2", "T3", "T4"])
+        # T1 beats T2 in round 0 position 0
+        bracket = advance_winner(bracket, 0, 0, "team1")
+        # T1 should advance to round 1 position 0 as team1
+        round1 = [s for s in bracket if s["round"] == 1 and s["position"] == 0]
+        assert len(round1) > 0
+        assert round1[0]["team1"] == "T1"
+
+    def test_advance_winner_position_1(self):
+        from esports_manager.bracket import advance_winner, generate_bracket
+        bracket = generate_bracket(["T1", "T2", "T3", "T4"])
+        bracket = advance_winner(bracket, 0, 1, "team2")
+        round1 = [s for s in bracket if s["round"] == 1 and s["position"] == 0]
+        assert len(round1) > 0
+        # Seeded order: T1 vs T4 (pos 0), T2 vs T3 (pos 1). team2 of pos 1 = T3
+        assert round1[0]["team2"] == "T3"
+
+    def test_complete_bracket_to_winner(self):
+        from esports_manager.bracket import (
+            advance_winner,
+            generate_bracket,
+            get_tournament_winner,
+            is_bracket_complete,
+        )
+        bracket = generate_bracket(["T1", "T2", "T3", "T4"])
+        bracket = advance_winner(bracket, 0, 0, "team1")  # T1 wins
+        bracket = advance_winner(bracket, 0, 1, "team2")  # T4 wins
+        bracket = advance_winner(bracket, 1, 0, "team1")  # T1 wins final
+        assert is_bracket_complete(bracket)
+        assert get_tournament_winner(bracket) == "T1"
+
+    def test_get_winner_none_if_incomplete(self):
+        from esports_manager.bracket import get_tournament_winner
+        assert get_tournament_winner([]) is None
+
+    def test_generate_less_than_2_teams(self):
+        from esports_manager.bracket import generate_bracket
+        assert generate_bracket(["Only"]) == []
+        assert generate_bracket([]) == []
+
+    def test_tournament_model_defaults(self):
+        from esports_manager.models import Tournament, TournamentStatus
+        t = Tournament(name="Test Cup", game_title="valorant")
+        assert t.status == TournamentStatus.UPCOMING
+        assert t.max_teams == 8
+
+
+# ---------------------------------------------------------------------------
+# Tournament CRUD tests
+# ---------------------------------------------------------------------------
+
+
+class TestTournamentCRUD:
+    def test_create_tournament(self, conn):
+        from esports_manager.db import create_tournament, get_tournament
+        from esports_manager.models import Tournament
+        t = Tournament(name="Summer Cup", game_title="valorant")
+        tid = create_tournament(conn, t)
+        assert tid > 0
+        got = get_tournament(conn, tid)
+        assert got is not None
+        assert got.name == "Summer Cup"
+
+    def test_list_tournaments(self, conn):
+        from esports_manager.db import create_tournament, list_tournaments
+        from esports_manager.models import Tournament
+        create_tournament(conn, Tournament(name="Cup1", game_title="cs2"))
+        create_tournament(conn, Tournament(name="Cup2", game_title="valorant"))
+        assert len(list_tournaments(conn)) >= 2
+
+    def test_register_team(self, conn):
+        from esports_manager.db import (
+            create_tournament,
+            list_tournament_teams,
+            register_tournament_team,
+        )
+        from esports_manager.models import Tournament, TournamentTeam
+        tid = create_tournament(conn, Tournament(name="Test", game_title="valorant"))
+        register_tournament_team(conn, TournamentTeam(tournament_id=tid, team_name="TeamA", seed=1))
+        teams = list_tournament_teams(conn, tid)
+        assert len(teams) == 1
+        assert teams[0].team_name == "TeamA"
+
+    def test_unregister_team(self, conn):
+        from esports_manager.db import (
+            create_tournament,
+            list_tournament_teams,
+            register_tournament_team,
+            unregister_tournament_team,
+        )
+        from esports_manager.models import Tournament, TournamentTeam
+        tid = create_tournament(conn, Tournament(name="Test", game_title="valorant"))
+        register_tournament_team(conn, TournamentTeam(tournament_id=tid, team_name="TeamA"))
+        unregister_tournament_team(conn, tid, "TeamA")
+        assert len(list_tournament_teams(conn, tid)) == 0
+
+    def test_tournament_cli_parser(self):
+        from esports_manager.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["tournament", "create", "SummerCup", "--game", "valorant"])
+        assert args.command == "tournament"
+        assert args.tournament_command == "create"
+        assert args.name == "SummerCup"
