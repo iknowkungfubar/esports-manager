@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eSports Manager Dashboard</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root { --bg: #0f1117; --bg-card: #1a1d27; --bg-hover: #232638; --text: #e1e4ed; --text-dim: #8b8fa3; --border: #2a2d3a; --green: #34d399; --red: #f87171; --yellow: #fbbf24; --blue: #60a5fa; --accent: #6366f1; --radius: 8px; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; }
+        h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+        .sub { color: var(--text-dim); margin-bottom: 1.5rem; }
+        .cards { display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
+        .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; flex: 1; min-width: 160px; }
+        .card .num { font-size: 2rem; font-weight: 700; color: var(--accent); }
+        .card .lbl { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; }
+        .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .team-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; cursor: pointer; transition: border-color 0.15s; }
+        .team-card:hover { border-color: var(--accent); }
+        .team-card h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+        .team-card .meta { font-size: 0.8rem; color: var(--text-dim); }
+        .team-card .badge { display: inline-block; padding: 0.15rem 0.5rem; background: var(--accent); border-radius: 999px; font-size: 0.7rem; margin-top: 0.5rem; }
+        a { color: var(--blue); text-decoration: none; }
+        .empty { text-align: center; padding: 3rem; color: var(--text-dim); }
+    </style>
+</head>
+<body>
+    <h1>🎮 eSports Manager</h1>
+    <p class="sub">Team & club management dashboard</p>
+
+    <div class="cards" id="summary-cards"></div>
+    <h2 style="margin-bottom:0.75rem;">Teams</h2>
+    <div class="team-grid" id="team-grid"></div>
+
+    <script>
+    async function load() {
+        const [teamsRes, playersRes] = await Promise.all([
+            fetch('/api/teams'),
+            fetch('/api/players'),
+        ]);
+        const teams = await teamsRes.json();
+        const players = await playersRes.json();
+
+        // Summary cards
+        document.getElementById('summary-cards').innerHTML = `
+            <div class="card"><div class="num">${teams.teams.length}</div><div class="lbl">Teams</div></div>
+            <div class="card"><div class="num">${players.players.length}</div><div class="lbl">Players</div></div>
+            <div class="card"><div class="num">${teams.teams.reduce((s,t) => s + t.roster_count, 0)}</div><div class="lbl">Roster Spots</div></div>
+        `;
+
+        // Team cards
+        const grid = document.getElementById('team-grid');
+        if (teams.teams.length === 0) {
+            grid.innerHTML = '<p class="empty">No teams yet. Use <code>esports team create</code> to get started.</p>';
+            return;
+        }
+        grid.innerHTML = teams.teams.map(t => `
+            <div class="team-card" onclick="window.location='/teams/${t.name}'">
+                <h3>${t.name}</h3>
+                <div class="meta">${t.game_title} — ${t.roster_count} player(s)</div>
+                <div class="meta">${t.description || 'No description'}</div>
+                <span class="badge">${t.roster_count} roster</span>
+            </div>
+        `).join('');
+    }
+    load();
+    </script>
+</body>
+</html>

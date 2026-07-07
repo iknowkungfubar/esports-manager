@@ -1,0 +1,75 @@
+[project]
+name = "esports-manager"
+version = "0.1.0"
+description = "eSports team/club management platform — rosters, scrim scheduling, player availability"
+authors = [
+    {name = "iknowkungfubar", email = "hello@turintech.solutions"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "rich>=13.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "jinja2>=3.1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "rich>=13.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "jinja2>=3.1.0",
+    "httpx2>=2.5.0",
+]
+
+[project.scripts]
+esports = "esports_manager.cli:main"
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "S101",   # assert allowed — we use pytest
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    "FBT001", "FBT002",
+    "INP001",
+    "ISC001",
+    "EM101", "EM102",
+    "PLR0913",
+    "PLR2004",
+    "S603",
+    "TD003",
+    "TRY003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101", "D", "ANN", "ARG001", "ARG002", "PLR2004", "S603", "TID252", "SLF001",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["esports_manager"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 50
