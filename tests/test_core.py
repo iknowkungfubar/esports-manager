@@ -12,6 +12,10 @@ import pytest
 from esports_manager.models import (
     Availability,
     GameTitle,
+    Match,
+    MatchFormat,
+    MatchResult,
+    MatchStatus,
     Player,
     PlayerRole,
     RosterEntry,
@@ -342,3 +346,89 @@ class TestCLI:
         args = p.parse_args(["dashboard", "--port", "9000"])
         assert args.command == "dashboard"
         assert args.port == 9000
+
+
+# ---------------------------------------------------------------------------
+# Match tests
+# ---------------------------------------------------------------------------
+
+
+class TestMatchModel:
+    def test_match_defaults(self):
+        m = Match(team_name="T1", opponent="T2", match_date="2026-07-10")
+        assert m.format == MatchFormat.BO3
+        assert m.status == MatchStatus.SCHEDULED
+
+    def test_match_result_win(self):
+        r = MatchResult(match_id=1, team_name="T1", opponent="T2", team_score=3, opponent_score=1, winner="team")
+        assert r.team_won() is True
+        assert r.is_draw() is False
+
+    def test_match_result_draw(self):
+        r = MatchResult(match_id=2, team_name="T1", opponent="T2", team_score=2, opponent_score=2, winner="draw")
+        assert r.team_won() is False
+        assert r.is_draw() is True
+
+
+class TestMatchCRUD:
+    def test_create_and_get_match(self, conn):
+        from esports_manager.db import create_match, get_match
+        m = Match(team_name="T1", opponent="T2", match_date="2026-07-10")
+        mid = create_match(conn, m)
+        assert mid > 0
+        got = get_match(conn, mid)
+        assert got is not None
+        assert got.opponent == "T2"
+
+    def test_list_matches_by_team(self, conn):
+        from esports_manager.db import create_match, list_matches
+        create_match(conn, Match(team_name="T1", opponent="A", match_date="2026-07-10"))
+        create_match(conn, Match(team_name="T2", opponent="B", match_date="2026-07-11"))
+        t1_matches = list_matches(conn, team_name="T1")
+        assert len(t1_matches) == 1
+
+    def test_record_result(self, conn):
+        from esports_manager.db import create_match, get_match, get_match_result, record_match_result
+        mid = create_match(conn, Match(team_name="T1", opponent="T2", match_date="2026-07-10"))
+        result = MatchResult(match_id=mid, team_name="T1", opponent="T2", team_score=3, opponent_score=1, winner="team")
+        record_match_result(conn, result)
+
+        match = get_match(conn, mid)
+        assert match.status == MatchStatus.COMPLETED
+
+        stored = get_match_result(conn, mid)
+        assert stored is not None
+        assert stored.winner == "team"
+
+    def test_team_record(self, conn):
+        from esports_manager.db import create_match, get_team_record, record_match_result
+        mid1 = create_match(conn, Match(team_name="T1", opponent="A", match_date="2026-07-10"))
+        mid2 = create_match(conn, Match(team_name="T1", opponent="B", match_date="2026-07-11"))
+        record_match_result(conn, MatchResult(match_id=mid1, team_name="T1", opponent="A", team_score=3, opponent_score=0, winner="team"))
+        record_match_result(conn, MatchResult(match_id=mid2, team_name="T1", opponent="B", team_score=1, opponent_score=3, winner="opponent"))
+
+        rec = get_team_record(conn, "T1")
+        assert rec["wins"] == 1
+        assert rec["losses"] == 1
+        assert rec["total"] == 2
+        assert rec["win_rate"] == 50.0
+
+    def test_delete_match_cascades(self, conn):
+        from esports_manager.db import create_match, delete_match, get_match, get_match_result
+        mid = create_match(conn, Match(team_name="T1", opponent="T2", match_date="2026-07-10"))
+        delete_match(conn, mid)
+        assert get_match(conn, mid) is None
+
+    def test_match_cli_parser(self):
+        from esports_manager.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["match", "create", "T1", "--opponent", "T2", "--date", "2026-07-10"])
+        assert args.command == "match"
+        assert args.match_command == "create"
+
+    def test_record_cli_parser(self):
+        from esports_manager.cli import _build_parser
+        p = _build_parser()
+        args = p.parse_args(["record", "T1"])
+        assert args.command == "record"
+        assert args.team == "T1"

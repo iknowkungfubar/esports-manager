@@ -12,6 +12,10 @@ from typing import Any
 from esports_manager.models import (
     Availability,
     GameTitle,
+    Match,
+    MatchFormat,
+    MatchResult,
+    MatchStatus,
     Player,
     PlayerRole,
     RosterEntry,
@@ -70,6 +74,30 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             timezone        TEXT NOT NULL DEFAULT 'UTC',
             notes           TEXT NOT NULL DEFAULT '',
             PRIMARY KEY (player_name, day_of_week, start_hour)
+        );
+
+        CREATE TABLE IF NOT EXISTS matches (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_name       TEXT NOT NULL,
+            opponent        TEXT NOT NULL,
+            match_date      TEXT NOT NULL,
+            match_time      TEXT NOT NULL DEFAULT '',
+            format          TEXT NOT NULL DEFAULT 'bo3',
+            status          TEXT NOT NULL DEFAULT 'scheduled',
+            notes           TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS match_results (
+            match_id        INTEGER PRIMARY KEY,
+            team_name       TEXT NOT NULL,
+            opponent        TEXT NOT NULL,
+            team_score      INTEGER NOT NULL DEFAULT 0,
+            opponent_score  INTEGER NOT NULL DEFAULT 0,
+            winner          TEXT NOT NULL DEFAULT '',
+            mvp             TEXT NOT NULL DEFAULT '',
+            maps            TEXT NOT NULL DEFAULT '',
+            recorded_at     TEXT NOT NULL
         );
     """)
     conn.commit()
@@ -348,4 +376,137 @@ def _row_to_avail(row: sqlite3.Row) -> Availability:
         end_hour=row["end_hour"],
         timezone=row["timezone"],
         notes=row["notes"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Match CRUD
+# ---------------------------------------------------------------------------
+
+
+def create_match(conn: sqlite3.Connection, match: Match) -> int:
+    """Create a new match, returns the match ID."""
+    cursor = conn.execute(
+        """INSERT INTO matches (team_name, opponent, match_date, match_time, format, status, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (match.team_name, match.opponent, match.match_date, match.match_time,
+         match.format.value, match.status.value, match.notes, match.created_at.isoformat()),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_match(conn: sqlite3.Connection, match_id: int) -> Match | None:
+    """Get a match by ID."""
+    row = conn.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+    return _row_to_match(row) if row else None
+
+
+def list_matches(
+    conn: sqlite3.Connection,
+    team_name: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[Match]:
+    """List matches with optional filters."""
+    conditions: list[str] = []
+    params: list[Any] = []
+
+    if team_name:
+        conditions.append("team_name = ?")
+        params.append(team_name)
+    if status:
+        conditions.append("status = ?")
+        params.append(status)
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+    rows = conn.execute(
+        f"SELECT * FROM matches{where} ORDER BY match_date DESC, match_time DESC LIMIT ?",
+        [*params, limit],
+    ).fetchall()
+    return [_row_to_match(r) for r in rows]
+
+
+def update_match_status(conn: sqlite3.Connection, match_id: int, status: str) -> None:
+    """Update a match's status."""
+    conn.execute("UPDATE matches SET status = ? WHERE id = ?", (status, match_id))
+    conn.commit()
+
+
+def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
+    """Delete a match and its result."""
+    conn.execute("DELETE FROM match_results WHERE match_id = ?", (match_id,))
+    conn.execute("DELETE FROM matches WHERE id = ?", (match_id,))
+    conn.commit()
+
+
+def record_match_result(conn: sqlite3.Connection, result: MatchResult) -> None:
+    """Record a match result."""
+    conn.execute(
+        """INSERT OR REPLACE INTO match_results
+           (match_id, team_name, opponent, team_score, opponent_score, winner, mvp, maps, recorded_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (result.match_id, result.team_name, result.opponent,
+         result.team_score, result.opponent_score, result.winner,
+         result.mvp, result.maps, result.recorded_at.isoformat()),
+    )
+    # Also mark the match as completed
+    update_match_status(conn, result.match_id, "completed")
+    conn.commit()
+
+
+def get_match_result(conn: sqlite3.Connection, match_id: int) -> MatchResult | None:
+    """Get the result of a match."""
+    row = conn.execute(
+        "SELECT * FROM match_results WHERE match_id = ?", (match_id,)
+    ).fetchone()
+    return _row_to_result(row) if row else None
+
+
+def get_team_record(conn: sqlite3.Connection, team_name: str) -> dict[str, Any]:
+    """Get W/L/T record and win rate for a team."""
+    rows = conn.execute(
+        "SELECT winner, COUNT(*) as cnt FROM match_results WHERE team_name = ? GROUP BY winner",
+        (team_name,),
+    ).fetchall()
+    wins = 0
+    losses = 0
+    draws = 0
+    for r in rows:
+        if r["winner"] == "team":
+            wins = r["cnt"]
+        elif r["winner"] == "opponent":
+            losses = r["cnt"]
+        elif r["winner"] == "draw":
+            draws = r["cnt"]
+    total = wins + losses + draws
+    win_rate = round(wins / total * 100, 1) if total > 0 else 0.0
+    return {"wins": wins, "losses": losses, "draws": draws, "total": total, "win_rate": win_rate}
+
+
+def _row_to_match(row: sqlite3.Row) -> Match:
+    return Match(
+        id=row["id"],
+        team_name=row["team_name"],
+        opponent=row["opponent"],
+        match_date=row["match_date"],
+        match_time=row["match_time"],
+        format=MatchFormat(row["format"]) if hasattr(MatchFormat, row["format"].upper().replace("-", "_")) else MatchFormat.BO3,
+        status=MatchStatus(row["status"]) if hasattr(MatchStatus, row["status"].upper()) else MatchStatus.SCHEDULED,
+        notes=row["notes"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _row_to_result(row: sqlite3.Row) -> MatchResult:
+    return MatchResult(
+        match_id=row["match_id"],
+        team_name=row["team_name"],
+        opponent=row["opponent"],
+        team_score=row["team_score"],
+        opponent_score=row["opponent_score"],
+        winner=row["winner"],
+        mvp=row["mvp"],
+        maps=row["maps"],
+        recorded_at=datetime.fromisoformat(row["recorded_at"]),
     )

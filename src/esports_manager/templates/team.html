@@ -49,6 +49,12 @@
         <div id="avail-container"><p class="empty">Loading...</p></div>
     </div>
 
+    <div class="section">
+        <h2>Match Schedule</h2>
+        <table><thead><tr><th>Date</th><th>Opponent</th><th>Format</th><th>Status</th></tr></thead>
+        <tbody id="matches-body"><tr><td colspan="4" class="empty">Loading...</td></tr></tbody></table>
+    </div>
+
     <script>
     async function load() {
         const name = document.getElementById('team-name').textContent;
@@ -99,6 +105,21 @@
                     </div>
                 `).join('') +
             '</div>';
+        }
+
+        // Match schedule
+        const matchesBody = document.getElementById('matches-body');
+        if (data.matches && data.matches.length > 0) {
+            matchesBody.innerHTML = data.matches.map(m => `
+                <tr>
+                    <td>${m.match_date}${m.match_time ? ' ' + m.match_time : ''}</td>
+                    <td>vs ${m.opponent}</td>
+                    <td>${m.format}</td>
+                    <td><span class="role-badge ${m.status}">${m.status}</span></td>
+                </tr>
+            `).join('');
+        } else {
+            matchesBody.innerHTML = '<tr><td colspan="4" class="empty">No matches scheduled.</td></tr>';
         }
     }
     load();

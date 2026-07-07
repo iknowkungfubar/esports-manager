@@ -102,3 +102,59 @@ class Availability:
             raise ValueError("end_hour must be 0-23")
         if self.start_hour >= self.end_hour:
             raise ValueError("start_hour must be before end_hour")
+
+
+class MatchStatus(str, Enum):
+    """Status of a scheduled match."""
+
+    SCHEDULED = "scheduled"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    POSTPONED = "postponed"
+
+
+class MatchFormat(str, Enum):
+    """Format/type of match."""
+
+    BO1 = "bo1"
+    BO3 = "bo3"
+    BO5 = "bo5"
+    SCRIM = "scrim"
+    TOURNAMENT = "tournament"
+    LEAGUE = "league"
+
+
+@dataclass
+class Match:
+    """A scheduled match or scrim."""
+
+    id: int | None = None
+    team_name: str = ""
+    opponent: str = ""
+    match_date: str = ""  # ISO date string
+    match_time: str = ""  # HH:MM
+    format: MatchFormat = MatchFormat.BO3
+    status: MatchStatus = MatchStatus.SCHEDULED
+    notes: str = ""
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
+@dataclass
+class MatchResult:
+    """Result of a completed match."""
+
+    match_id: int
+    team_name: str
+    opponent: str
+    team_score: int = 0
+    opponent_score: int = 0
+    winner: str = ""  # "team" or "opponent" or "draw"
+    mvp: str = ""  # Gamertag of MVP
+    maps: str = ""  # JSON string of map results
+    recorded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def team_won(self) -> bool:
+        return self.winner == "team"
+
+    def is_draw(self) -> bool:
+        return self.winner == "draw"

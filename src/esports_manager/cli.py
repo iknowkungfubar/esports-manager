@@ -32,6 +32,9 @@ from esports_manager.db import (
 from esports_manager.models import (
     Availability,
     GameTitle,
+    Match,
+    MatchFormat,
+    MatchResult,
     Player,
     PlayerRole,
     RosterEntry,
@@ -107,6 +110,35 @@ def _build_parser() -> argparse.ArgumentParser:
 
     a_team = av.add_parser("team", help="Show team availability")
     a_team.add_argument("--team", type=str, required=True, help="Team name")
+
+    # match commands
+    m = sub.add_parser("match", help="Manage matches/scrims")
+    ms = m.add_subparsers(dest="match_command")
+
+    mc = ms.add_parser("create", help="Schedule a match")
+    mc.add_argument("team", type=str, help="Your team name")
+    mc.add_argument("--opponent", type=str, required=True, help="Opponent name")
+    mc.add_argument("--date", type=str, required=True, help="Match date (YYYY-MM-DD)")
+    mc.add_argument("--time", type=str, default="", help="Match time (HH:MM)")
+    mc.add_argument("--format", type=str, default="bo3", help="Format (bo1/bo3/bo5)")
+    mc.add_argument("--notes", type=str, default="", help="Notes")
+
+    m_list = ms.add_parser("list", help="List matches")
+    m_list.add_argument("--team", type=str, default=None, help="Filter by team")
+    m_list.add_argument("--status", type=str, default=None, help="Filter by status")
+
+    result = ms.add_parser("record", help="Record a match result")
+    result.add_argument("match_id", type=int, help="Match ID")
+    result.add_argument("--team-score", type=int, required=True, help="Your team score")
+    result.add_argument("--opponent-score", type=int, required=True, help="Opponent score")
+    result.add_argument("--mvp", type=str, default="", help="MVP gamertag")
+    result.add_argument("--maps", type=str, default="", help="Map results (JSON)")
+
+    m_del = ms.add_parser("delete", help="Delete a match")
+    m_del.add_argument("match_id", type=int, help="Match ID")
+
+    record = sub.add_parser("record", help="Show team's W/L/T record")
+    record.add_argument("team", type=str, help="Team name")
 
     # dashboard
     dash = sub.add_parser("dashboard", help="Start web dashboard")
@@ -334,6 +366,103 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
             console.print(f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players")
 
 
+# ---------------------------------------------------------------------------
+# Match commands
+# ---------------------------------------------------------------------------
+
+
+def _cmd_match_create(args: argparse.Namespace) -> None:
+    """Schedule a new match."""
+    from esports_manager.db import create_match
+    match = Match(
+        team_name=args.team,
+        opponent=args.opponent,
+        match_date=args.date,
+        match_time=args.time,
+        format=MatchFormat(args.format) if hasattr(MatchFormat, args.format.upper().replace("-", "_")) else MatchFormat.BO3,
+        notes=args.notes,
+    )
+    conn = get_connection()
+    match_id = create_match(conn, match)
+    conn.close()
+    console.print(f"[green]✓[/green] Match #{match_id} scheduled — [bold]{args.team}[/bold] vs {args.opponent} on {args.date}")
+
+
+def _cmd_match_list(args: argparse.Namespace) -> None:
+    """List matches."""
+    from esports_manager.db import get_match_result, list_matches
+    conn = get_connection()
+    matches = list_matches(conn, team_name=args.team, status=args.status)
+    conn.close()
+
+    if not matches:
+        console.print("[yellow]No matches found.[/yellow]")
+        return
+
+    table = Table(title=f"Matches ({len(matches)})")
+    table.add_column("ID", justify="right")
+    table.add_column("Date")
+    table.add_column("Team")
+    table.add_column("Opponent")
+    table.add_column("Format")
+    table.add_column("Status")
+
+    for m in matches:
+        table.add_row(str(m.id), m.match_date, m.team_name, m.opponent, m.format.value, m.status.value)
+    console.print(table)
+
+
+def _cmd_match_record(args: argparse.Namespace) -> None:
+    """Record a match result."""
+    from esports_manager.db import get_match, record_match_result
+
+    conn = get_connection()
+    match = get_match(conn, args.match_id)
+    if match is None:
+        conn.close()
+        console.print(f"[red]✗[/red] Match #{args.match_id} not found")
+        return
+
+    winner = "team" if args.team_score > args.opponent_score else "opponent" if args.opponent_score > args.team_score else "draw"
+    result = MatchResult(
+        match_id=args.match_id,
+        team_name=match.team_name,
+        opponent=match.opponent,
+        team_score=args.team_score,
+        opponent_score=args.opponent_score,
+        winner=winner,
+        mvp=args.mvp,
+        maps=args.maps,
+    )
+    record_match_result(conn, result)
+    conn.close()
+
+    status_text = f"[green]WON[/green]" if winner == "team" else f"[red]LOST[/red]" if winner == "opponent" else "[yellow]DRAW[/yellow]"
+    console.print(f"[green]✓[/green] Result recorded: {status_text} {args.team_score}-{args.opponent_score}")
+
+
+def _cmd_match_delete(args: argparse.Namespace) -> None:
+    """Delete a match."""
+    from esports_manager.db import delete_match
+    conn = get_connection()
+    delete_match(conn, args.match_id)
+    conn.close()
+    console.print(f"[green]✓[/green] Match #{args.match_id} deleted")
+
+
+def _cmd_record(args: argparse.Namespace) -> None:
+    """Show team's W/L/T record."""
+    from esports_manager.db import get_team_record
+    conn = get_connection()
+    rec = get_team_record(conn, args.team)
+    conn.close()
+
+    console.print(f"[bold]Record: {args.team}[/bold]")
+    console.print(f"  {rec['wins']}W / {rec['losses']}L / {rec['draws']}D")
+    console.print(f"  Win Rate: [bold]{rec['win_rate']}%[/bold]")
+    console.print(f"  Total: {rec['total']} match(es)")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Main entry point."""
     parser = _build_parser()
@@ -372,6 +501,17 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "dashboard":
             from esports_manager.dashboard import serve
             serve(host=args.host, port=args.port)
+        elif args.command == "match":
+            if args.match_command == "create":
+                _cmd_match_create(args)
+            elif args.match_command == "list":
+                _cmd_match_list(args)
+            elif args.match_command == "record":
+                _cmd_match_record(args)
+            elif args.match_command == "delete":
+                _cmd_match_delete(args)
+        elif args.command == "record":
+            _cmd_record(args)
         else:
             parser.print_help()
     except Exception as e:

@@ -13,6 +13,7 @@ from esports_manager.db import (
     get_player_availability,
     get_team,
     get_team_availability,
+    list_matches,
     list_players,
     list_roster,
     list_teams,
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
         roster = list_roster(conn, name)
         avail = get_team_availability(conn, name)
         overlaps = get_overlapping_availability(conn, name)
+        match_list = list_matches(conn, team_name=name)[:10]
         conn.close()
 
         return {
@@ -81,6 +83,11 @@ def create_app() -> FastAPI:
             "best_times": [
                 {"day": DAY_NAMES[o["day_of_week"]], "start": o["start_hour"], "end": o["end_hour"], "players": o["player_count"]}
                 for o in overlaps[:5]
+            ],
+            "matches": [
+                {"id": m.id, "opponent": m.opponent, "match_date": m.match_date,
+                 "match_time": m.match_time, "format": m.format.value, "status": m.status.value}
+                for m in match_list
             ],
         }
 
