@@ -59,6 +59,11 @@ uv run python -c "from esports_manager.dashboard import serve; serve()"
 uv run --group dev pytest tests/ --cov=esports_manager
 ```
 
+
+---
+
+**Contact:** Josh Barker — [josh@turintechsolutions.com](mailto:josh@turintechsolutions.com) — [turintechsolutions.com](https://turintechsolutions.com)
+
 ## License
 
 MIT
