@@ -12,6 +12,25 @@ Manage players, rosters, availability, and practice scheduling — all from the 
 - **Availability** — players set weekly availability, system finds overlapping practice times
 - **Dashboard** — web UI for team overview, roster, and availability
 
+## Project Structure
+
+```
+esports-manager/
+├── src/esports_manager/
+│   ├── cli.py          # CLI interface (player, team, availability commands)
+│   ├── dashboard.py    # Web UI dashboard (FastAPI + Jinja2)
+│   ├── models.py       # Pydantic data models (Player, Team, Role)
+│   └── store.py        # SQLite data persistence
+├── tests/              # pytest test suite
+├── pyproject.toml      # Project configuration
+└── README.md           # This file
+```
+
+## Prerequisites
+
+- **Python >= 3.12** — Use [pyenv](https://github.com/pyenv/pyenv) or your system package manager
+- **uv** (recommended) — Install via `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ## Quick Start
 
 ```bash
@@ -63,6 +82,12 @@ uv run --group dev pytest tests/ --cov=esports_manager
 ---
 
 **Contact:** Josh Barker — [josh@turintechsolutions.com](mailto:josh@turintechsolutions.com) — [turintechsolutions.com](https://turintechsolutions.com)
+
+## CI/CD
+
+| Workflow | Status |
+|----------|--------|
+| CodeQL | [![CodeQL](https://github.com/iknowkungfubar/esports-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/iknowkungfubar/esports-manager/actions/workflows/codeql.yml) |
 
 ## License
 
