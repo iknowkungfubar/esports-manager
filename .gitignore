@@ -7,3 +7,36 @@ coverage_html/
 .venv/
 uv.lock
 *.db
+
+# AI Agent Artifacts — security: do not commit
+CLAUDE.md
+AGENTS.md
+CLAUDE_CODE.md
+RULES.md
+SOUL.md
+.cursor/
+.cursorrules
+.windsurfrules
+.opencode/
+.aider*
+COPILOT_INSTRUCTIONS.md
+.claude/
+CONTEXT.md
+MEMORY.md
+SKILL.md
+ai-instructions.md
+ai-context.md
+.github/copilot-instructions.md
+.hermes/
+*.hermes-profile
+loop-state.json
+loop-*.json
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+*.coverage.*
+
+# Hermes
+.hermes/
