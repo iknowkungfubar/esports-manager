@@ -1,13 +1,16 @@
+# Copyright (c) 2024-2025 iknowkungfubar
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Data models for the eSports Manager."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 
-class PlayerRole(str, Enum):
+class PlayerRole(StrEnum):
     """Role a player can have on a team roster."""
 
     CAPTAIN = "captain"
@@ -17,7 +20,7 @@ class PlayerRole(str, Enum):
     MANAGER = "manager"
 
 
-class GameTitle(str, Enum):
+class GameTitle(StrEnum):
     """Supported game titles."""
 
     VALORANT = "valorant"
@@ -34,7 +37,7 @@ class GameTitle(str, Enum):
     OTHER = "other"
 
 
-class SkillLevel(str, Enum):
+class SkillLevel(StrEnum):
     """Player skill/rank level."""
 
     BEGINNER = "beginner"
@@ -104,7 +107,7 @@ class Availability:
             raise ValueError("start_hour must be before end_hour")
 
 
-class MatchStatus(str, Enum):
+class MatchStatus(StrEnum):
     """Status of a scheduled match."""
 
     SCHEDULED = "scheduled"
@@ -113,7 +116,7 @@ class MatchStatus(str, Enum):
     POSTPONED = "postponed"
 
 
-class MatchFormat(str, Enum):
+class MatchFormat(StrEnum):
     """Format/type of match."""
 
     BO1 = "bo1"
@@ -160,7 +163,7 @@ class MatchResult:
         return self.winner == "draw"
 
 
-class BracketType(str, Enum):
+class BracketType(StrEnum):
     """Type of tournament bracket."""
 
     SINGLE_ELIMINATION = "single-elimination"
@@ -168,7 +171,7 @@ class BracketType(str, Enum):
     ROUND_ROBIN = "round-robin"  # Future
 
 
-class TournamentStatus(str, Enum):
+class TournamentStatus(StrEnum):
     """Status of a tournament."""
 
     UPCOMING = "upcoming"

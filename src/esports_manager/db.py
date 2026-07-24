@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2025 iknowkungfubar
+# Licensed under the MIT License. See LICENSE file for details.
+
 """SQLite persistence for the eSports Manager."""
 
 from __future__ import annotations
@@ -39,7 +42,8 @@ def get_db_path() -> Path:
 
 def _ensure_tables(conn: sqlite3.Connection) -> None:
     """Create tables if they don't exist."""
-    conn.executescript("""
+    conn.executescript(
+        """
         CREATE TABLE IF NOT EXISTS players (
             name            TEXT NOT NULL,
             gamertag        TEXT PRIMARY KEY,
@@ -131,7 +135,8 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             match_id        INTEGER,
             PRIMARY KEY (tournament_id, round, position)
         );
-    """)
+    """,
+    )
     conn.commit()
 
 
@@ -450,7 +455,8 @@ def _row_to_avail(row: sqlite3.Row) -> Availability:
 def create_match(conn: sqlite3.Connection, match: Match) -> int:
     """Create a new match, returns the match ID."""
     cursor = conn.execute(
-        """INSERT INTO matches (team_name, opponent, match_date, match_time, format, status, notes, created_at)
+        """INSERT INTO matches (team_name, opponent, match_date, match_time,
+           format, status, notes, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             match.team_name,
@@ -464,7 +470,7 @@ def create_match(conn: sqlite3.Connection, match: Match) -> int:
         ),
     )
     conn.commit()
-    return cursor.lastrowid
+    return cursor.lastrowid or 0
 
 
 def get_match(conn: sqlite3.Connection, match_id: int) -> Match | None:
@@ -477,31 +483,22 @@ def list_matches(
     conn: sqlite3.Connection,
     team_name: str | None = None,
     status: str | None = None,
-    limit: int = 50,
 ) -> list[Match]:
     """List matches with optional filters."""
     conditions: list[str] = []
     params: list[Any] = []
-
     if team_name:
         conditions.append("team_name = ?")
         params.append(team_name)
     if status:
         conditions.append("status = ?")
         params.append(status)
-
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = conn.execute(
-        f"SELECT * FROM matches{where} ORDER BY match_date DESC, match_time DESC LIMIT ?",
-        [*params, limit],
+        f"SELECT * FROM matches{where} ORDER BY match_date DESC, match_time DESC",
+        params,
     ).fetchall()
     return [_row_to_match(r) for r in rows]
-
-
-def update_match_status(conn: sqlite3.Connection, match_id: int, status: str) -> None:
-    """Update a match's status."""
-    conn.execute("UPDATE matches SET status = ? WHERE id = ?", (status, match_id))
-    conn.commit()
 
 
 def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
@@ -511,11 +508,31 @@ def delete_match(conn: sqlite3.Connection, match_id: int) -> None:
     conn.commit()
 
 
+def _row_to_match(row: sqlite3.Row) -> Match:
+    return Match(
+        id=row["id"],
+        team_name=row["team_name"],
+        opponent=row["opponent"],
+        match_date=row["match_date"],
+        match_time=row["match_time"],
+        format=MatchFormat(row["format"]),
+        status=MatchStatus(row["status"]),
+        notes=row["notes"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Match Results
+# ---------------------------------------------------------------------------
+
+
 def record_match_result(conn: sqlite3.Connection, result: MatchResult) -> None:
     """Record a match result."""
     conn.execute(
         """INSERT OR REPLACE INTO match_results
-           (match_id, team_name, opponent, team_score, opponent_score, winner, mvp, maps, recorded_at)
+           (match_id, team_name, opponent, team_score, opponent_score,
+            winner, mvp, maps, recorded_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             result.match_id,
@@ -529,60 +546,20 @@ def record_match_result(conn: sqlite3.Connection, result: MatchResult) -> None:
             result.recorded_at.isoformat(),
         ),
     )
-    # Also mark the match as completed
-    update_match_status(conn, result.match_id, "completed")
+    conn.execute(
+        "UPDATE matches SET status = ? WHERE id = ?",
+        (MatchStatus.COMPLETED.value, result.match_id),
+    )
     conn.commit()
 
 
 def get_match_result(conn: sqlite3.Connection, match_id: int) -> MatchResult | None:
-    """Get the result of a match."""
+    """Get the result for a match."""
     row = conn.execute(
-        "SELECT * FROM match_results WHERE match_id = ?",
-        (match_id,),
+        "SELECT * FROM match_results WHERE match_id = ?", (match_id,),
     ).fetchone()
-    return _row_to_result(row) if row else None
-
-
-def get_team_record(conn: sqlite3.Connection, team_name: str) -> dict[str, Any]:
-    """Get W/L/T record and win rate for a team."""
-    rows = conn.execute(
-        "SELECT winner, COUNT(*) as cnt FROM match_results WHERE team_name = ? GROUP BY winner",
-        (team_name,),
-    ).fetchall()
-    wins = 0
-    losses = 0
-    draws = 0
-    for r in rows:
-        if r["winner"] == "team":
-            wins = r["cnt"]
-        elif r["winner"] == "opponent":
-            losses = r["cnt"]
-        elif r["winner"] == "draw":
-            draws = r["cnt"]
-    total = wins + losses + draws
-    win_rate = round(wins / total * 100, 1) if total > 0 else 0.0
-    return {"wins": wins, "losses": losses, "draws": draws, "total": total, "win_rate": win_rate}
-
-
-def _row_to_match(row: sqlite3.Row) -> Match:
-    return Match(
-        id=row["id"],
-        team_name=row["team_name"],
-        opponent=row["opponent"],
-        match_date=row["match_date"],
-        match_time=row["match_time"],
-        format=MatchFormat(row["format"])
-        if hasattr(MatchFormat, row["format"].upper().replace("-", "_"))
-        else MatchFormat.BO3,
-        status=MatchStatus(row["status"])
-        if hasattr(MatchStatus, row["status"].upper())
-        else MatchStatus.SCHEDULED,
-        notes=row["notes"],
-        created_at=datetime.fromisoformat(row["created_at"]),
-    )
-
-
-def _row_to_result(row: sqlite3.Row) -> MatchResult:
+    if not row:
+        return None
     return MatchResult(
         match_id=row["match_id"],
         team_name=row["team_name"],
@@ -601,114 +578,50 @@ def _row_to_result(row: sqlite3.Row) -> MatchResult:
 # ---------------------------------------------------------------------------
 
 
-def create_tournament(conn: sqlite3.Connection, t: Tournament) -> int:
-    """Create a tournament, returns the ID."""
+def create_tournament(conn: sqlite3.Connection, tournament: Tournament) -> int:
+    """Create a new tournament, returns the tournament ID."""
     cursor = conn.execute(
-        """INSERT INTO tournaments (name, game_title, bracket_type, status, max_teams, created_at)
+        """INSERT INTO tournaments (name, game_title, bracket_type, status,
+           max_teams, created_at)
            VALUES (?, ?, ?, ?, ?, ?)""",
         (
-            t.name,
-            t.game_title,
-            t.bracket_type.value,
-            t.status.value,
-            t.max_teams,
-            t.created_at.isoformat(),
+            tournament.name,
+            tournament.game_title,
+            tournament.bracket_type.value,
+            tournament.status.value,
+            tournament.max_teams,
+            tournament.created_at.isoformat(),
         ),
     )
     conn.commit()
-    return cursor.lastrowid
+    return cursor.lastrowid or 0
 
 
-def get_tournament(conn: sqlite3.Connection, tid: int) -> Tournament | None:
+def get_tournament(conn: sqlite3.Connection, tournament_id: int) -> Tournament | None:
     """Get a tournament by ID."""
-    row = conn.execute("SELECT * FROM tournaments WHERE id = ?", (tid,)).fetchone()
-    if not row:
-        return None
-    return Tournament(
-        id=row["id"],
-        name=row["name"],
-        game_title=row["game_title"],
-        bracket_type=BracketType(row["bracket_type"]),
-        status=TournamentStatus(row["status"]),
-        max_teams=row["max_teams"],
-        created_at=datetime.fromisoformat(row["created_at"]),
-    )
+    row = conn.execute(
+        "SELECT * FROM tournaments WHERE id = ?", (tournament_id,),
+    ).fetchone()
+    return _row_to_tournament(row) if row else None
 
 
 def list_tournaments(conn: sqlite3.Connection) -> list[Tournament]:
     """List all tournaments."""
-    return [
-        _row_to_tournament(r)
-        for r in conn.execute(
-            "SELECT * FROM tournaments ORDER BY created_at DESC",
-        ).fetchall()
-    ]
+    rows = conn.execute(
+        "SELECT * FROM tournaments ORDER BY created_at DESC",
+    ).fetchall()
+    return [_row_to_tournament(r) for r in rows]
 
 
-def update_tournament_status(conn: sqlite3.Connection, tid: int, status: str) -> None:
+def update_tournament_status(
+    conn: sqlite3.Connection, tournament_id: int, status: TournamentStatus,
+) -> None:
     """Update tournament status."""
-    conn.execute("UPDATE tournaments SET status = ? WHERE id = ?", (status, tid))
-    conn.commit()
-
-
-def register_tournament_team(conn: sqlite3.Connection, tt: TournamentTeam) -> None:
-    """Register a team for a tournament."""
     conn.execute(
-        "INSERT OR REPLACE INTO tournament_teams (tournament_id, team_name, seed) VALUES (?, ?, ?)",
-        (tt.tournament_id, tt.team_name, tt.seed),
+        "UPDATE tournaments SET status = ? WHERE id = ?",
+        (status.value, tournament_id),
     )
     conn.commit()
-
-
-def unregister_tournament_team(conn: sqlite3.Connection, tid: int, team: str) -> None:
-    """Remove a team from a tournament."""
-    conn.execute(
-        "DELETE FROM tournament_teams WHERE tournament_id = ? AND team_name = ?",
-        (tid, team),
-    )
-    conn.commit()
-
-
-def list_tournament_teams(conn: sqlite3.Connection, tid: int) -> list[TournamentTeam]:
-    """List teams registered in a tournament."""
-    rows = conn.execute(
-        "SELECT * FROM tournament_teams WHERE tournament_id = ? ORDER BY seed",
-        (tid,),
-    ).fetchall()
-    return [
-        TournamentTeam(tournament_id=r["tournament_id"], team_name=r["team_name"], seed=r["seed"])
-        for r in rows
-    ]
-
-
-def save_bracket_slots(conn: sqlite3.Connection, tid: int, slots: list[dict]) -> None:
-    """Save bracket slots for a tournament."""
-    conn.execute("DELETE FROM bracket_slots WHERE tournament_id = ?", (tid,))
-    for s in slots:
-        conn.execute(
-            """INSERT INTO bracket_slots (tournament_id, round, position, team1_name, team2_name, winner, score, match_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                tid,
-                s["round"],
-                s["position"],
-                s.get("team1", ""),
-                s.get("team2", ""),
-                s.get("winner", ""),
-                s.get("score", ""),
-                s.get("match_id"),
-            ),
-        )
-    conn.commit()
-
-
-def load_bracket_slots(conn: sqlite3.Connection, tid: int) -> list[dict]:
-    """Load bracket slots for a tournament."""
-    rows = conn.execute(
-        "SELECT * FROM bracket_slots WHERE tournament_id = ? ORDER BY round DESC, position",
-        (tid,),
-    ).fetchall()
-    return [dict(r) for r in rows]
 
 
 def _row_to_tournament(row: sqlite3.Row) -> Tournament:
@@ -721,3 +634,135 @@ def _row_to_tournament(row: sqlite3.Row) -> Tournament:
         max_teams=row["max_teams"],
         created_at=datetime.fromisoformat(row["created_at"]),
     )
+
+
+# ---------------------------------------------------------------------------
+# Tournament Teams
+# ---------------------------------------------------------------------------
+
+
+def register_tournament_team(
+    conn: sqlite3.Connection, team: TournamentTeam,
+) -> None:
+    """Register a team for a tournament."""
+    conn.execute(
+        """INSERT OR REPLACE INTO tournament_teams (tournament_id, team_name, seed)
+           VALUES (?, ?, ?)""",
+        (team.tournament_id, team.team_name, team.seed),
+    )
+    conn.commit()
+
+
+def unregister_tournament_team(
+    conn: sqlite3.Connection, tournament_id: int, team_name: str,
+) -> None:
+    """Remove a team from a tournament."""
+    conn.execute(
+        "DELETE FROM tournament_teams WHERE tournament_id = ? AND team_name = ?",
+        (tournament_id, team_name),
+    )
+    conn.commit()
+
+
+def list_tournament_teams(
+    conn: sqlite3.Connection, tournament_id: int,
+) -> list[TournamentTeam]:
+    """List teams registered for a tournament."""
+    rows = conn.execute(
+        "SELECT * FROM tournament_teams WHERE tournament_id = ? ORDER BY seed",
+        (tournament_id,),
+    ).fetchall()
+    return [
+        TournamentTeam(tournament_id=r["tournament_id"], team_name=r["team_name"], seed=r["seed"])
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Bracket Slots
+# ---------------------------------------------------------------------------
+
+
+def save_bracket_slots(
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    slots: list[dict[str, Any]],
+) -> None:
+    """Save all bracket slots for a tournament."""
+    conn.execute(
+        "DELETE FROM bracket_slots WHERE tournament_id = ?", (tournament_id,),
+    )
+    for s in slots:
+        conn.execute(
+            """INSERT INTO bracket_slots
+               (tournament_id, round, position, team1_name, team2_name, winner, score, match_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tournament_id,
+                s["round"],
+                s["position"],
+                s.get("team1", ""),
+                s.get("team2", ""),
+                s.get("winner", ""),
+                s.get("score", ""),
+                s.get("match_id"),
+            ),
+        )
+    conn.commit()
+
+
+def load_bracket_slots(
+    conn: sqlite3.Connection, tournament_id: int,
+) -> list[dict[str, Any]]:
+    """Load all bracket slots for a tournament."""
+    rows = conn.execute(
+        "SELECT * FROM bracket_slots WHERE tournament_id = ? ORDER BY round, position",
+        (tournament_id,),
+    ).fetchall()
+    return [
+        {
+            "tournament_id": r["tournament_id"],
+            "round": r["round"],
+            "position": r["position"],
+            "team1": r["team1_name"],
+            "team2": r["team2_name"],
+            "winner": r["winner"],
+            "score": r["score"],
+            "match_id": r["match_id"],
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Team Record
+# ---------------------------------------------------------------------------
+
+
+def get_team_record(conn: sqlite3.Connection, team_name: str) -> dict[str, Any]:
+    """Get W/L/T record for a team."""
+    row = conn.execute(
+        """SELECT
+            SUM(CASE WHEN winner = 'team' THEN 1 ELSE 0 END) as wins,
+            SUM(CASE WHEN winner = 'opponent' THEN 1 ELSE 0 END) as losses,
+            SUM(CASE WHEN winner = 'draw' THEN 1 ELSE 0 END) as draws,
+            COUNT(*) as total
+           FROM match_results mr
+           JOIN matches m ON mr.match_id = m.id
+           WHERE m.team_name = ?""",
+        (team_name,),
+    ).fetchone()
+
+    wins = row["wins"] or 0
+    losses = row["losses"] or 0
+    draws = row["draws"] or 0
+    total = row["total"] or 0
+    win_rate = round((wins / total * 100), 1) if total > 0 else 0.0
+
+    return {
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "total": total,
+        "win_rate": win_rate,
+    }

@@ -1,4 +1,7 @@
-"""CLI interface for the eSports Manager."""
+# Copyright (c) 2024-2025 iknowkungfubar
+# Licensed under the MIT License. See LICENSE file for details.
+
+"""Command-line interface for eSports Manager."""
 
 from __future__ import annotations
 
@@ -8,19 +11,40 @@ import sys
 from rich.console import Console
 from rich.table import Table
 
+from esports_manager.bracket import (
+    advance_winner,
+    generate_bracket,
+    get_tournament_winner,
+    is_bracket_complete,
+)
 from esports_manager.db import (
     add_roster_entry,
+    create_match,
+    create_tournament,
+    delete_match,
     delete_player,
     get_connection,
+    get_match,
     get_overlapping_availability,
     get_player,
     get_player_availability,
     get_team,
     get_team_availability,
+    get_team_record,
+    get_tournament,
+    list_matches,
     list_players,
     list_roster,
     list_teams,
+    list_tournament_teams,
+    list_tournaments,
+    load_bracket_slots,
+    record_match_result,
+    register_tournament_team,
     remove_roster_entry,
+    save_bracket_slots,
+    unregister_tournament_team,
+    update_tournament_status,
     upsert_availability,
     upsert_player,
     upsert_team,
@@ -31,11 +55,14 @@ from esports_manager.models import (
     Match,
     MatchFormat,
     MatchResult,
+    MatchStatus,
     Player,
     PlayerRole,
     RosterEntry,
     SkillLevel,
     Team,
+    Tournament,
+    TournamentTeam,
 )
 
 console = Console()
@@ -46,235 +73,277 @@ DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="esports",
-        description="eSports team/club management platform",
+        description="eSports Manager — team/club management platform",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # Player commands
+    p_player = sub.add_parser("player", help="Player management")
+    p_player_sub = p_player.add_subparsers(dest="player_command", required=True)
+
+    pc = p_player_sub.add_parser("create", help="Create a player")
+    pc.add_argument("name", help="Display name")
+    pc.add_argument("--gamertag", required=True, help="In-game handle (unique)")
+    pc.add_argument("--email", default="")
+    pc.add_argument("--discord", default="")
+    pc.add_argument(
+        "--game",
+        choices=[g.value for g in GameTitle],
+        default=GameTitle.OTHER.value,
+    )
+    pc.add_argument(
+        "--skill",
+        choices=[s.value for s in SkillLevel],
+        default=SkillLevel.INTERMEDIATE.value,
+    )
+    pc.add_argument("--notes", default="")
+
+    pl = p_player_sub.add_parser("list", help="List players")
+    pl.add_argument("--game", choices=[g.value for g in GameTitle], help="Filter by game")
+    pl.add_argument("--inactive", action="store_true", help="Include inactive players")
+
+    pd = p_player_sub.add_parser("delete", help="Delete a player")
+    pd.add_argument("gamertag", help="Gamertag to delete")
+
+    # Team commands
+    p_team = sub.add_parser("team", help="Team management")
+    p_team_sub = p_team.add_subparsers(dest="team_command", required=True)
+
+    tc = p_team_sub.add_parser("create", help="Create a team")
+    tc.add_argument("name", help="Team name (unique)")
+    tc.add_argument(
+        "--game",
+        choices=[g.value for g in GameTitle],
+        default=GameTitle.OTHER.value,
+    )
+    tc.add_argument("--description", default="")
+
+    tl = p_team_sub.add_parser("list", help="List teams")
+    tl.add_argument("--inactive", action="store_true", help="Include inactive teams")
+
+    ta = p_team_sub.add_parser("add-player", help="Add player to team roster")
+    ta.add_argument("team", help="Team name")
+    ta.add_argument("player", help="Player name")
+    ta.add_argument("--gamertag", required=True)
+    ta.add_argument(
+        "--role",
+        choices=[r.value for r in PlayerRole],
+        default=PlayerRole.PLAYER.value,
     )
 
-    sub = parser.add_subparsers(dest="command", help="Command")
+    tr = p_team_sub.add_parser("remove-player", help="Remove player from team")
+    tr.add_argument("team", help="Team name")
+    tr.add_argument("gamertag", help="Player gamertag")
 
-    # player
-    p = sub.add_parser("player", help="Manage players")
-    ps = p.add_subparsers(dest="player_command")
+    tro = p_team_sub.add_parser("roster", help="Show team roster with availability")
+    tro.add_argument("name", help="Team name")
 
-    pc = ps.add_parser("create", help="Create a player")
-    pc.add_argument("name", type=str, help="Display name")
-    pc.add_argument("--gamertag", type=str, required=True, help="Unique gamertag")
-    pc.add_argument("--email", type=str, default="", help="Email address")
-    pc.add_argument("--discord", type=str, default="", help="Discord handle")
-    pc.add_argument("--game", type=str, default="other", help="Game title")
-    pc.add_argument("--skill", type=str, default="intermediate", help="Skill level")
+    # Availability commands
+    p_avail = sub.add_parser("availability", help="Player availability")
+    p_avail_sub = p_avail.add_subparsers(dest="avail_command", required=True)
 
-    ps.add_parser("list", help="List players")
+    aset = p_avail_sub.add_parser("set", help="Set availability for a player")
+    aset.add_argument("player", help="Player gamertag")
+    aset.add_argument("--day", type=int, required=True, choices=range(7), help="0=Mon..6=Sun")
+    aset.add_argument("--start", type=int, required=True, choices=range(24), help="Start hour 0-23")
+    aset.add_argument("--end", type=int, required=True, choices=range(24), help="End hour 0-23")
 
-    pd = ps.add_parser("delete", help="Delete a player")
-    pd.add_argument("gamertag", type=str, help="Gamertag to delete")
+    ash = p_avail_sub.add_parser("show", help="Show player availability")
+    ash.add_argument("player", help="Player gamertag")
 
-    # team
-    t = sub.add_parser("team", help="Manage teams")
-    ts = t.add_subparsers(dest="team_command")
+    at = p_avail_sub.add_parser("team", help="Show team availability overview")
+    at.add_argument("team", help="Team name")
 
-    tc = ts.add_parser("create", help="Create a team")
-    tc.add_argument("name", type=str, help="Team name")
-    tc.add_argument("--game", type=str, default="other", help="Game title")
-    tc.add_argument("--desc", type=str, default="", help="Description")
+    # Dashboard
+    p_dash = sub.add_parser("dashboard", help="Start web dashboard")
+    p_dash.add_argument("--host", default="127.0.0.1")
+    p_dash.add_argument("--port", type=int, default=8555)
 
-    ts.add_parser("list", help="List teams")
+    # Match commands
+    p_match = sub.add_parser("match", help="Match/scrimmage management")
+    p_match_sub = p_match.add_subparsers(dest="match_command", required=True)
 
-    ta = ts.add_parser("add-player", help="Add player to team")
-    ta.add_argument("team", type=str, help="Team name")
-    ta.add_argument("--gamertag", type=str, required=True, help="Player gamertag")
-    ta.add_argument("--role", type=str, default="player", help="Roster role")
+    mc = p_match_sub.add_parser("create", help="Schedule a match")
+    mc.add_argument("team", help="Team name")
+    mc.add_argument("opponent", help="Opponent name")
+    mc.add_argument("date", help="Match date (YYYY-MM-DD)")
+    mc.add_argument("--time", default="", help="Match time (HH:MM)")
+    mc.add_argument(
+        "--format",
+        choices=[f.value for f in MatchFormat],
+        default=MatchFormat.BO3.value,
+    )
+    mc.add_argument("--notes", default="")
 
-    tr = ts.add_parser("remove-player", help="Remove player from team")
-    tr.add_argument("team", type=str, help="Team name")
-    tr.add_argument("--gamertag", type=str, required=True, help="Player gamertag")
+    ml = p_match_sub.add_parser("list", help="List matches")
+    ml.add_argument("--team", help="Filter by team")
+    ml.add_argument(
+        "--status",
+        choices=[s.value for s in MatchStatus],
+        help="Filter by status",
+    )
 
-    tros = ts.add_parser("roster", help="Show team roster")
-    tros.add_argument("name", type=str, help="Team name")
+    mr = p_match_sub.add_parser("record", help="Record match result")
+    mr.add_argument("match_id", type=int, help="Match ID")
+    mr.add_argument("team_score", type=int)
+    mr.add_argument("opponent_score", type=int)
+    mr.add_argument("--mvp", default="", help="MVP gamertag")
+    mr.add_argument("--maps", default="", help="Map results as JSON string")
 
-    # availability
-    a = sub.add_parser("availability", help="Manage availability")
-    av = a.add_subparsers(dest="avail_command")
+    md = p_match_sub.add_parser("delete", help="Delete a match")
+    md.add_argument("match_id", type=int)
 
-    avs = av.add_parser("set", help="Set availability slot")
-    avs.add_argument("--player", type=str, required=True, help="Player gamertag")
-    avs.add_argument("--day", type=int, required=True, help="Day of week (0=Mon, 6=Sun)")
-    avs.add_argument("--start", type=int, required=True, help="Start hour (0-23)")
-    avs.add_argument("--end", type=int, required=True, help="End hour (0-23)")
+    # Record command
+    pr = sub.add_parser("record", help="Show team W/L/T record")
+    pr.add_argument("team", help="Team name")
 
-    av.show = av.add_parser("show", help="Show player availability")
-    av.show.add_argument("--player", type=str, required=True, help="Player gamertag")
+    # Tournament commands
+    p_tourney = sub.add_parser("tournament", help="Tournament management")
+    p_tourney_sub = p_tourney.add_subparsers(dest="tournament_command", required=True)
 
-    a_team = av.add_parser("team", help="Show team availability")
-    a_team.add_argument("--team", type=str, required=True, help="Team name")
+    tcr = p_tourney_sub.add_parser("create", help="Create a tournament")
+    tcr.add_argument("name", help="Tournament name")
+    tcr.add_argument(
+        "--game",
+        choices=[g.value for g in GameTitle],
+        default=GameTitle.OTHER.value,
+    )
+    tcr.add_argument("--max-teams", type=int, default=8)
 
-    # match commands
-    m = sub.add_parser("match", help="Manage matches/scrims")
-    ms = m.add_subparsers(dest="match_command")
+    _ = p_tourney_sub.add_parser("list", help="List tournaments")
 
-    mc = ms.add_parser("create", help="Schedule a match")
-    mc.add_argument("team", type=str, help="Your team name")
-    mc.add_argument("--opponent", type=str, required=True, help="Opponent name")
-    mc.add_argument("--date", type=str, required=True, help="Match date (YYYY-MM-DD)")
-    mc.add_argument("--time", type=str, default="", help="Match time (HH:MM)")
-    mc.add_argument("--format", type=str, default="bo3", help="Format (bo1/bo3/bo5)")
-    mc.add_argument("--notes", type=str, default="", help="Notes")
+    treg = p_tourney_sub.add_parser("register-team", help="Register team for tournament")
+    treg.add_argument("tournament_id", type=int)
+    treg.add_argument("team", help="Team name")
+    treg.add_argument("--seed", type=int, default=0)
 
-    m_list = ms.add_parser("list", help="List matches")
-    m_list.add_argument("--team", type=str, default=None, help="Filter by team")
-    m_list.add_argument("--status", type=str, default=None, help="Filter by status")
+    tdrop = p_tourney_sub.add_parser("drop-team", help="Drop team from tournament")
+    tdrop.add_argument("tournament_id", type=int)
+    tdrop.add_argument("team", help="Team name")
 
-    result = ms.add_parser("record", help="Record a match result")
-    result.add_argument("match_id", type=int, help="Match ID")
-    result.add_argument("--team-score", type=int, required=True, help="Your team score")
-    result.add_argument("--opponent-score", type=int, required=True, help="Opponent score")
-    result.add_argument("--mvp", type=str, default="", help="MVP gamertag")
-    result.add_argument("--maps", type=str, default="", help="Map results (JSON)")
+    tstart = p_tourney_sub.add_parser("start", help="Start tournament (generate bracket)")
+    tstart.add_argument("tournament_id", type=int)
 
-    m_del = ms.add_parser("delete", help="Delete a match")
-    m_del.add_argument("match_id", type=int, help="Match ID")
+    tb = p_tourney_sub.add_parser("bracket", help="Show tournament bracket")
+    tb.add_argument("tournament_id", type=int)
 
-    record = sub.add_parser("record", help="Show team's W/L/T record")
-    record.add_argument("team", type=str, help="Team name")
-
-    # tournament commands
-    tour = sub.add_parser("tournament", help="Manage tournaments")
-    ts = tour.add_subparsers(dest="tournament_command")
-
-    tc = ts.add_parser("create", help="Create a tournament")
-    tc.add_argument("name", type=str, help="Tournament name")
-    tc.add_argument("--game", type=str, default="other", help="Game title")
-    tc.add_argument("--max-teams", type=int, default=8, help="Max teams")
-
-    ts.add_parser("list", help="List tournaments")
-
-    t_reg = ts.add_parser("register-team", help="Register a team")
-    t_reg.add_argument("tournament_id", type=int, help="Tournament ID")
-    t_reg.add_argument("--team", type=str, required=True, help="Team name")
-    t_reg.add_argument("--seed", type=int, default=0, help="Seed number")
-
-    t_unreg = ts.add_parser("drop-team", help="Remove a team from tournament")
-    t_unreg.add_argument("tournament_id", type=int, help="Tournament ID")
-    t_unreg.add_argument("--team", type=str, required=True, help="Team name")
-
-    t_start = ts.add_parser("start", help="Generate bracket and start tournament")
-    t_start.add_argument("tournament_id", type=int, help="Tournament ID")
-
-    t_bracket = ts.add_parser("bracket", help="View tournament bracket")
-    t_bracket.add_argument("tournament_id", type=int, help="Tournament ID")
-
-    t_result = ts.add_parser("record-result", help="Record bracket match result")
-    t_result.add_argument("tournament_id", type=int, help="Tournament ID")
-    t_result.add_argument("--round", type=int, required=True, help="Round number")
-    t_result.add_argument("--position", type=int, required=True, help="Position in round")
-    t_result.add_argument("--winner", type=str, required=True, help="team1 or team2")
-    t_result.add_argument("--score", type=str, default="", help="Score (e.g. 3-1)")
-
-    # dashboard
-    dash = sub.add_parser("dashboard", help="Start web dashboard")
-    dash.add_argument("--host", type=str, default="127.0.0.1", help="Host (default: 127.0.0.1)")
-    dash.add_argument("--port", "-p", type=int, default=8555, help="Port (default: 8555)")
+    trec = p_tourney_sub.add_parser("record-result", help="Record bracket match result")
+    trec.add_argument("tournament_id", type=int)
+    trec.add_argument("round", type=int, help="Round number (0 = first round)")
+    trec.add_argument("position", type=int, help="Position in round")
+    trec.add_argument("winner", choices=["team1", "team2"])
+    trec.add_argument("--score", default="", help="Score string (e.g. '3-1')")
 
     return parser
 
 
-def cmd_player_create(args: argparse.Namespace) -> None:
-    """Create a new player."""
-    game = (
-        GameTitle(args.game)
-        if hasattr(GameTitle, args.game.upper().replace("-", "_"))
-        else GameTitle.OTHER
-    )
-    skill = (
-        SkillLevel(args.skill)
-        if hasattr(SkillLevel, args.skill.upper().replace("-", "_"))
-        else SkillLevel.INTERMEDIATE
-    )
+# ---------------------------------------------------------------------------
+# Player commands
+# ---------------------------------------------------------------------------
 
+
+def cmd_player_create(args: argparse.Namespace) -> None:
     player = Player(
         name=args.name,
         gamertag=args.gamertag,
         email=args.email,
         discord=args.discord,
-        game_title=game,
-        skill_level=skill,
+        game_title=GameTitle(args.game),
+        skill_level=SkillLevel(args.skill),
+        notes=args.notes,
     )
     conn = get_connection()
     upsert_player(conn, player)
     conn.close()
-    console.print(f"[green]✓[/green] Player [bold]{player.gamertag}[/bold] created ({player.name})")
+    console.print(
+        f"[green]✓[/green] Player [bold]{args.name}[/bold] ({args.gamertag}) created",
+    )
 
 
-def cmd_player_list() -> None:
-    """List all players."""
+def cmd_player_list(args: argparse.Namespace) -> None:
     conn = get_connection()
-    players = list_players(conn)
+    players = list_players(
+        conn,
+        active_only=not args.inactive,
+        game_title=args.game,
+    )
     conn.close()
 
     if not players:
-        console.print("[yellow]No players yet.[/yellow]")
+        console.print("[yellow]No players found.[/yellow]")
         return
 
     table = Table(title="Players")
+    table.add_column("Name", style="bold")
     table.add_column("Gamertag", style="cyan")
-    table.add_column("Name")
     table.add_column("Game")
     table.add_column("Skill")
     table.add_column("Discord")
+    table.add_column("Active")
 
     for p in players:
-        table.add_row(p.gamertag, p.name, p.game_title.value, p.skill_level.value, p.discord)
+        table.add_row(
+            p.name,
+            p.gamertag,
+            p.game_title.value,
+            p.skill_level.value,
+            p.discord or "-",
+            "Yes" if p.active else "No",
+        )
     console.print(table)
 
 
 def cmd_player_delete(args: argparse.Namespace) -> None:
-    """Delete a player."""
     conn = get_connection()
+    player = get_player(conn, args.gamertag)
+    if player is None:
+        conn.close()
+        console.print(f"[red]✗[/red] Player '{args.gamertag}' not found")
+        return
     delete_player(conn, args.gamertag)
     conn.close()
     console.print(f"[green]✓[/green] Player [bold]{args.gamertag}[/bold] deleted")
 
 
+# ---------------------------------------------------------------------------
+# Team commands
+# ---------------------------------------------------------------------------
+
+
 def cmd_team_create(args: argparse.Namespace) -> None:
-    """Create a new team."""
     team = Team(
         name=args.name,
-        game_title=GameTitle(args.game)
-        if hasattr(GameTitle, args.game.upper().replace("-", "_"))
-        else GameTitle.OTHER,
-        description=args.desc,
+        game_title=GameTitle(args.game),
+        description=args.description,
     )
     conn = get_connection()
     upsert_team(conn, team)
     conn.close()
-    console.print(f"[green]✓[/green] Team [bold]{team.name}[/bold] created")
+    console.print(f"[green]✓[/green] Team [bold]{args.name}[/bold] created")
 
 
-def cmd_team_list() -> None:
-    """List all teams."""
+def cmd_team_list(args: argparse.Namespace) -> None:
     conn = get_connection()
-    teams = list_teams(conn)
+    teams = list_teams(conn, active_only=not args.inactive)
     conn.close()
 
     if not teams:
-        console.print("[yellow]No teams yet.[/yellow]")
+        console.print("[yellow]No teams found.[/yellow]")
         return
 
     table = Table(title="Teams")
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="bold")
     table.add_column("Game")
     table.add_column("Description")
-    table.add_column("Roster", justify="right")
+    table.add_column("Active")
 
     for t in teams:
-        conn2 = get_connection()
-        roster = list_roster(conn2, t.name)
-        conn2.close()
-        table.add_row(t.name, t.game_title.value, t.description[:40], str(len(roster)))
+        table.add_row(t.name, t.game_title.value, t.description or "-", "Yes" if t.active else "No")
     console.print(table)
 
 
 def cmd_team_add_player(args: argparse.Namespace) -> None:
-    """Add a player to a team."""
     conn = get_connection()
     player = get_player(conn, args.gamertag)
     if player is None:
@@ -287,29 +356,34 @@ def cmd_team_add_player(args: argparse.Namespace) -> None:
         console.print(f"[red]✗[/red] Team '{args.team}' not found")
         return
 
-    role = PlayerRole(args.role) if hasattr(PlayerRole, args.role.upper()) else PlayerRole.PLAYER
     entry = RosterEntry(
-        team_name=args.team, player_name=player.name, gamertag=args.gamertag, role=role
+        team_name=args.team,
+        player_name=player.name,
+        gamertag=args.gamertag,
+        role=PlayerRole(args.role),
     )
     add_roster_entry(conn, entry)
     conn.close()
     console.print(
-        f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to [bold]{args.team}[/bold] as {role.value}"
+        (
+            (
+                f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to "
+                f"[bold]{args.team}[/bold] as {args.role}",
+            )
+        ),
     )
 
 
 def cmd_team_remove_player(args: argparse.Namespace) -> None:
-    """Remove a player from a team."""
     conn = get_connection()
     remove_roster_entry(conn, args.team, args.gamertag)
     conn.close()
     console.print(
-        f"[green]✓[/green] [bold]{args.gamertag}[/bold] removed from [bold]{args.team}[/bold]"
+        f"[green]✓[/green] [bold]{args.gamertag}[/bold] removed from [bold]{args.team}[/bold]",
     )
 
 
 def cmd_team_roster(args: argparse.Namespace) -> None:
-    """Show team roster."""
     conn = get_connection()
     team = get_team(conn, args.name)
     if team is None:
@@ -345,14 +419,23 @@ def cmd_team_roster(args: argparse.Namespace) -> None:
     if overlaps:
         console.print("\n[bold]Best Practice Times:[/bold]")
         for o in overlaps[:5]:
-            players = o["players"].split(",")
             console.print(
-                f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} player(s)"
+                (
+                    (
+                    f"  {DAY_NAMES[o['day_of_week']]} "
+                    f"{o['start_hour']:02d}:00-{o['end_hour']:02d}:00 "
+                    f"— {o['player_count']} player(s)",
+                )
+                ),
             )
 
 
+# ---------------------------------------------------------------------------
+# Availability commands
+# ---------------------------------------------------------------------------
+
+
 def cmd_avail_set(args: argparse.Namespace) -> None:
-    """Set availability for a player."""
     try:
         avail = Availability(
             player_name=args.player,
@@ -368,12 +451,12 @@ def cmd_avail_set(args: argparse.Namespace) -> None:
     upsert_availability(conn, avail)
     conn.close()
     console.print(
-        f"[green]✓[/green] Availability set for [bold]{args.player}[/bold] on {DAY_NAMES[args.day]} {args.start}:00-{args.end}:00"
+        f"[green]✓[/green] Availability set for [bold]{args.player}[/bold] "
+        f"on {DAY_NAMES[args.day]} {args.start:02d}:00-{args.end:02d}:00",
     )
 
 
 def cmd_avail_show(args: argparse.Namespace) -> None:
-    """Show player availability."""
     conn = get_connection()
     slots = get_player_availability(conn, args.player)
     conn.close()
@@ -392,7 +475,6 @@ def cmd_avail_show(args: argparse.Namespace) -> None:
 
 
 def cmd_avail_team(args: argparse.Namespace) -> None:
-    """Show team availability overview."""
     conn = get_connection()
     overlaps = get_overlapping_availability(conn, args.team)
     avail = get_team_availability(conn, args.team)
@@ -415,7 +497,9 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
         console.print("\n[bold]Overlapping Slots:[/bold]")
         for o in overlaps[:5]:
             console.print(
-                f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players"
+                (
+                    f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players",
+                ),
             )
 
 
@@ -425,31 +509,25 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
 
 
 def _cmd_match_create(args: argparse.Namespace) -> None:
-    """Schedule a new match."""
-    from esports_manager.db import create_match
-
+    format_enum = MatchFormat(args.format)
     match = Match(
         team_name=args.team,
         opponent=args.opponent,
         match_date=args.date,
         match_time=args.time,
-        format=MatchFormat(args.format)
-        if hasattr(MatchFormat, args.format.upper().replace("-", "_"))
-        else MatchFormat.BO3,
+        format=format_enum,
         notes=args.notes,
     )
     conn = get_connection()
     match_id = create_match(conn, match)
     conn.close()
     console.print(
-        f"[green]✓[/green] Match #{match_id} scheduled — [bold]{args.team}[/bold] vs {args.opponent} on {args.date}"
+        f"[green]✓[/green] Match #{match_id} scheduled — [bold]{args.team}[/bold] "
+        f"vs {args.opponent} on {args.date}",
     )
 
 
 def _cmd_match_list(args: argparse.Namespace) -> None:
-    """List matches."""
-    from esports_manager.db import list_matches
-
     conn = get_connection()
     matches = list_matches(conn, team_name=args.team, status=args.status)
     conn.close()
@@ -468,15 +546,17 @@ def _cmd_match_list(args: argparse.Namespace) -> None:
 
     for m in matches:
         table.add_row(
-            str(m.id), m.match_date, m.team_name, m.opponent, m.format.value, m.status.value
+            str(m.id),
+            m.match_date,
+            m.team_name,
+            m.opponent,
+            m.format.value,
+            m.status.value,
         )
     console.print(table)
 
 
 def _cmd_match_record(args: argparse.Namespace) -> None:
-    """Record a match result."""
-    from esports_manager.db import get_match, record_match_result
-
     conn = get_connection()
     match = get_match(conn, args.match_id)
     if match is None:
@@ -512,14 +592,11 @@ def _cmd_match_record(args: argparse.Namespace) -> None:
         else "[yellow]DRAW[/yellow]"
     )
     console.print(
-        f"[green]✓[/green] Result recorded: {status_text} {args.team_score}-{args.opponent_score}"
+        f"[green]✓[/green] Result recorded: {status_text} {args.team_score}-{args.opponent_score}",
     )
 
 
 def _cmd_match_delete(args: argparse.Namespace) -> None:
-    """Delete a match."""
-    from esports_manager.db import delete_match
-
     conn = get_connection()
     delete_match(conn, args.match_id)
     conn.close()
@@ -527,9 +604,6 @@ def _cmd_match_delete(args: argparse.Namespace) -> None:
 
 
 def _cmd_record(args: argparse.Namespace) -> None:
-    """Show team's W/L/T record."""
-    from esports_manager.db import get_team_record
-
     conn = get_connection()
     rec = get_team_record(conn, args.team)
     conn.close()
@@ -546,22 +620,12 @@ def _cmd_record(args: argparse.Namespace) -> None:
 
 
 def _cmd_tournament(args: argparse.Namespace) -> None:
-    """Dispatch tournament subcommands."""
-    from esports_manager.db import (
-        create_tournament,
-        get_tournament,
-        list_tournament_teams,
-        list_tournaments,
-        load_bracket_slots,
-        register_tournament_team,
-        save_bracket_slots,
-        unregister_tournament_team,
-        update_tournament_status,
-    )
-    from esports_manager.models import Tournament, TournamentTeam
-
     if args.tournament_command == "create":
-        t = Tournament(name=args.name, game_title=args.game, max_teams=args.max_teams)
+        t = Tournament(
+            name=args.name,
+            game_title=args.game,
+            max_teams=args.max_teams,
+        )
         conn = get_connection()
         tid = create_tournament(conn, t)
         conn.close()
@@ -599,7 +663,8 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         )
         conn.close()
         console.print(
-            f"[green]✓[/green] [bold]{args.team}[/bold] registered for tournament #{args.tournament_id}"
+            f"[green]✓[/green] [bold]{args.team}[/bold] registered for "
+            f"tournament #{args.tournament_id}",
         )
 
     elif args.tournament_command == "drop-team":
@@ -607,12 +672,11 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         unregister_tournament_team(conn, args.tournament_id, args.team)
         conn.close()
         console.print(
-            f"[green]✓[/green] [bold]{args.team}[/bold] dropped from tournament #{args.tournament_id}"
+            f"[green]✓[/green] [bold]{args.team}[/bold] dropped from "
+            f"tournament #{args.tournament_id}",
         )
 
     elif args.tournament_command == "start":
-        from esports_manager.bracket import generate_bracket
-
         conn = get_connection()
         teams = list_tournament_teams(conn, args.tournament_id)
         if len(teams) < 2:
@@ -625,12 +689,11 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         update_tournament_status(conn, args.tournament_id, "in-progress")
         conn.close()
         console.print(
-            f"[green]✓[/green] Tournament #{args.tournament_id} started with {len(teams)} teams, {len(bracket)} matches"
+            f"[green]✓[/green] Tournament #{args.tournament_id} started with "
+            f"{len(teams)} teams, {len(bracket)} matches",
         )
 
     elif args.tournament_command == "bracket":
-        from esports_manager.bracket import get_tournament_winner
-
         conn = get_connection()
         tournament = get_tournament(conn, args.tournament_id)
         slots = load_bracket_slots(conn, args.tournament_id)
@@ -646,20 +709,17 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         console.print("")
 
         if not slots:
-            console.print("[yellow]Bracket not yet generated. Start the tournament first.[/yellow]")
+            console.print(
+                "[yellow]Bracket not yet generated. Start the tournament first.[/yellow]",
+            )
             return
 
-        # Group by round
         from itertools import groupby
 
         slots_sorted = sorted(slots, key=lambda s: (-s["round"], s["position"]))
         for rnd, group in groupby(slots_sorted, key=lambda s: s["round"]):
             round_slots = list(group)
-            round_name = (
-                round_slots[0].get("round_name", f"Round {rnd}")
-                if "round_name" in round_slots[0]
-                else f"Round {rnd}"
-            )
+            round_name = round_slots[0].get("round_name", f"Round {rnd}")
             console.print(f"\n[bold]{round_name}[/bold]")
             for s in round_slots:
                 t1 = s["team1_name"] or "TBD"
@@ -672,8 +732,6 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
             console.print(f"\n[bold green]🏆 Champion: {winner}[/bold green]")
 
     elif args.tournament_command == "record-result":
-        from esports_manager.bracket import advance_winner
-
         conn = get_connection()
         slots = load_bracket_slots(conn, args.tournament_id)
         if not slots:
@@ -682,9 +740,6 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
             return
         updated = advance_winner(slots, args.round, args.position, args.winner, args.score)
         save_bracket_slots(conn, args.tournament_id, updated)
-        # Check if tournament is complete
-        from esports_manager.bracket import is_bracket_complete
-
         if is_bracket_complete(slots):
             update_tournament_status(conn, args.tournament_id, "completed")
             console.print("[green]✓[/green] Tournament completed!")
@@ -695,34 +750,36 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         console.print("[yellow]Unknown tournament subcommand[/yellow]")
 
 
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Main entry point."""
     parser = _build_parser()
     args = parser.parse_args(argv)
-
-    if not args.command:
-        parser.print_help()
-        return 0
 
     try:
         if args.command == "player":
             if args.player_command == "create":
                 cmd_player_create(args)
             elif args.player_command == "list":
-                cmd_player_list()
+                cmd_player_list(args)
             elif args.player_command == "delete":
                 cmd_player_delete(args)
+
         elif args.command == "team":
             if args.team_command == "create":
                 cmd_team_create(args)
             elif args.team_command == "list":
-                cmd_team_list()
+                cmd_team_list(args)
             elif args.team_command == "add-player":
                 cmd_team_add_player(args)
             elif args.team_command == "remove-player":
                 cmd_team_remove_player(args)
             elif args.team_command == "roster":
                 cmd_team_roster(args)
+
         elif args.command == "availability":
             if args.avail_command == "set":
                 cmd_avail_set(args)
@@ -730,10 +787,12 @@ def main(argv: list[str] | None = None) -> int:
                 cmd_avail_show(args)
             elif args.avail_command == "team":
                 cmd_avail_team(args)
+
         elif args.command == "dashboard":
             from esports_manager.dashboard import serve
 
             serve(host=args.host, port=args.port)
+
         elif args.command == "match":
             if args.match_command == "create":
                 _cmd_match_create(args)
@@ -743,12 +802,16 @@ def main(argv: list[str] | None = None) -> int:
                 _cmd_match_record(args)
             elif args.match_command == "delete":
                 _cmd_match_delete(args)
+
         elif args.command == "record":
             _cmd_record(args)
+
         elif args.command == "tournament":
             _cmd_tournament(args)
+
         else:
             parser.print_help()
+
     except Exception as e:
         console.print(f"[red]✗ Unexpected error: {e}[/red]")
         return 1

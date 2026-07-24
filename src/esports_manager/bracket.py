@@ -1,118 +1,108 @@
-"""Tournament bracket generation engine.
+# Copyright (c) 2024-2025 iknowkungfubar
+# Licensed under the MIT License. See LICENSE file for details.
 
-Supports single-elimination brackets with seeding,
-auto-advancement, and byes for non-power-of-2 team counts.
-"""
+"""Bracket generation and management for tournaments."""
 
 from __future__ import annotations
 
-import math
+from math import log2
 from typing import Any
 
 
-def _next_power_of_2(n: int) -> int:
+def _round_name(round_idx: int, total_rounds: int) -> str:
+    """Generate a human-readable round name."""
+    if round_idx == 0:
+        return "Final"
+    if round_idx == 1:
+        return "Semi-finals"
+    if round_idx == 2:
+        return "Quarter-finals"
+    return f"Round {total_rounds - round_idx}"
+
+
+def _next_power_of_two(n: int) -> int:
     """Get the next power of 2 >= n."""
-    return 2 ** math.ceil(math.log2(n)) if n > 0 else 0
+    if n <= 1:
+        return 1
+    return 1 << (n - 1).bit_length()
 
 
-def _total_rounds(num_teams: int) -> int:
-    """Calculate number of rounds needed for single elimination."""
-    if num_teams <= 1:
-        return 0
-    return math.ceil(math.log2(num_teams))
+def _create_first_round(
+    teams: list[str],
+    total_teams: int,
+    total_rounds: int,
+) -> list[dict[str, Any]]:
+    """Create the first round of bracket slots with seeded teams."""
+    padded = teams + [""] * (total_teams - len(teams))
+    matches_in_round = total_teams // 2
+
+    return [
+        {
+            "round": total_rounds - 1,
+            "position": pos,
+            "team1": padded[pos * 2] or "",
+            "team2": padded[pos * 2 + 1] or "",
+            "winner": "",
+            "round_name": _round_name(total_rounds - 1, total_rounds),
+        }
+        for pos in range(matches_in_round)
+    ]
+
+
+def _create_later_rounds(total_rounds: int) -> list[dict[str, Any]]:
+    """Create placeholder slots for later rounds."""
+    bracket: list[dict[str, Any]] = []
+    for rnd in range(total_rounds - 2, -1, -1):
+        matches_in_round = 2**rnd
+        bracket.extend(
+            {
+                "round": rnd,
+                "position": pos,
+                "team1": "",
+                "team2": "",
+                "winner": "",
+                "round_name": _round_name(rnd, total_rounds),
+            }
+            for pos in range(matches_in_round)
+        )
+    return bracket
+
+
+def _apply_byes(bracket: list[dict[str, Any]], total_teams: int) -> None:
+    """Auto-advance teams that get byes in the first round."""
+    if total_teams == len([t for t in bracket if t["team1"]]):
+        return
+
+    first_round = [s for s in bracket if s["round"] == len(bracket).bit_length() - 1]
+    for slot in first_round:
+        if slot["team1"] and not slot["team2"]:
+            slot["winner"] = "team1"
+        elif slot["team2"] and not slot["team1"]:
+            slot["winner"] = "team2"
 
 
 def generate_bracket(teams: list[str]) -> list[dict[str, Any]]:
     """Generate a single-elimination bracket from a list of team names.
 
     Args:
-        teams: List of team names. If not a power of 2, byes are added.
+        teams: List of team names.
 
     Returns:
-        List of bracket slot dicts, each with:
-            round: int (0 = final)
-            position: int
-            team1: str (empty if bye)
-            team2: str (empty if bye)
-            round_name: str
+        List of bracket slots (dicts with round, position, team1, team2, winner, round_name).
 
     """
-    count = len(teams)
-    if count < 2:
+    if len(teams) < 2:
         return []
 
-    # Pad with byes to next power of 2
-    padded_count = _next_power_of_2(count)
-    slots = list(teams) + [""] * (padded_count - count)
+    total_teams = _next_power_of_two(len(teams))
+    total_rounds = int(log2(total_teams))
 
-    # Seed the bracket
-    # Standard seeding: 1 vs last, 2 vs second-last, etc.
-    seeded: list[str] = [""] * padded_count
-    for i in range(padded_count // 2):
-        seeded[i * 2] = slots[i]
-        seeded[i * 2 + 1] = slots[-(i + 1)]
-
-    total_r = _total_rounds(padded_count)
     bracket: list[dict[str, Any]] = []
-
-    for rnd in range(total_r, 0, -1):
-        if rnd == total_r:
-            matches_in_round = padded_count // 2
-        else:
-            matches_in_round = 2 ** (rnd - 1)
-
-        if rnd == total_r:
-            # First round — use seeded teams
-            for pos in range(matches_in_round):
-                bracket.append(
-                    {
-                        "round": total_r - rnd,
-                        "position": pos,
-                        "team1": seeded[pos * 2] if seeded[pos * 2] else "",
-                        "team2": seeded[pos * 2 + 1] if seeded[pos * 2 + 1] else "",
-                        "winner": "",
-                        "round_name": _round_name(total_r - rnd, total_r),
-                    }
-                )
-        else:
-            # Later rounds — slots are placeholders
-            for pos in range(matches_in_round):
-                bracket.append(
-                    {
-                        "round": total_r - rnd,
-                        "position": pos,
-                        "team1": "",
-                        "team2": "",
-                        "winner": "",
-                        "round_name": _round_name(total_r - rnd, total_r),
-                    }
-                )
-
-    # Fix first round for non-power-of-2: byes auto-advance
-    # Teams facing a bye (empty opponent) get an auto-win
-    for slot in bracket:
-        if slot["round"] == 0:
-            if slot["team1"] and not slot["team2"]:
-                slot["winner"] = "team1"
-            elif slot["team2"] and not slot["team1"]:
-                slot["winner"] = "team2"
+    bracket.extend(_create_first_round(teams, total_teams, total_rounds))
+    bracket.extend(_create_later_rounds(total_rounds))
+    _apply_byes(bracket, len(teams))
 
     return bracket
-
-
-def _round_name(round_num: int, total_rounds: int) -> str:
-    """Get a human-readable name for a round."""
-    if total_rounds == 0:
-        return "Final"
-    if round_num == total_rounds:
-        return "Final"
-    if round_num == total_rounds - 1:
-        return "Semi-Finals"
-    if round_num == total_rounds - 2:
-        return "Quarter-Finals"
-    if round_num == 0:
-        return "Round 1"
-    return f"Round {round_num + 1}"
 
 
 def advance_winner(
@@ -151,11 +141,10 @@ def advance_winner(
 
     # Determine which team won
     winning_team = match_slot["team1"] if winner == "team1" else match_slot["team2"]
-
     if not winning_team:
         return bracket
 
-    # Advance to next round (higher round number)
+    # Advance to next round
     next_round = round_num + 1
     next_position = position // 2
 
@@ -184,10 +173,12 @@ def get_tournament_winner(bracket: list[dict[str, Any]]) -> str | None:
     """Get the tournament winner from a completed bracket."""
     if not is_bracket_complete(bracket):
         return None
+
     # Winner is in the final match (highest round, position 0)
     final = [s for s in bracket if s["position"] == 0]
     if not final:
         return None
+
     final_slot = max(final, key=lambda s: s["round"])
     if final_slot["winner"] == "team1":
         return final_slot["team1"]
