@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import UTC, datetime
 
 from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
 
 from esports_manager.db import (
     add_roster_entry,
     delete_player,
-    delete_team,
     get_connection,
     get_overlapping_availability,
     get_player,
@@ -23,7 +20,6 @@ from esports_manager.db import (
     list_players,
     list_roster,
     list_teams,
-    remove_availability,
     remove_roster_entry,
     upsert_availability,
     upsert_player,
@@ -183,8 +179,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def cmd_player_create(args: argparse.Namespace) -> None:
     """Create a new player."""
-    game = GameTitle(args.game) if hasattr(GameTitle, args.game.upper().replace("-", "_")) else GameTitle.OTHER
-    skill = SkillLevel(args.skill) if hasattr(SkillLevel, args.skill.upper().replace("-", "_")) else SkillLevel.INTERMEDIATE
+    game = (
+        GameTitle(args.game)
+        if hasattr(GameTitle, args.game.upper().replace("-", "_"))
+        else GameTitle.OTHER
+    )
+    skill = (
+        SkillLevel(args.skill)
+        if hasattr(SkillLevel, args.skill.upper().replace("-", "_"))
+        else SkillLevel.INTERMEDIATE
+    )
 
     player = Player(
         name=args.name,
@@ -234,7 +238,9 @@ def cmd_team_create(args: argparse.Namespace) -> None:
     """Create a new team."""
     team = Team(
         name=args.name,
-        game_title=GameTitle(args.game) if hasattr(GameTitle, args.game.upper().replace("-", "_")) else GameTitle.OTHER,
+        game_title=GameTitle(args.game)
+        if hasattr(GameTitle, args.game.upper().replace("-", "_"))
+        else GameTitle.OTHER,
         description=args.desc,
     )
     conn = get_connection()
@@ -282,10 +288,14 @@ def cmd_team_add_player(args: argparse.Namespace) -> None:
         return
 
     role = PlayerRole(args.role) if hasattr(PlayerRole, args.role.upper()) else PlayerRole.PLAYER
-    entry = RosterEntry(team_name=args.team, player_name=player.name, gamertag=args.gamertag, role=role)
+    entry = RosterEntry(
+        team_name=args.team, player_name=player.name, gamertag=args.gamertag, role=role
+    )
     add_roster_entry(conn, entry)
     conn.close()
-    console.print(f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to [bold]{args.team}[/bold] as {role.value}")
+    console.print(
+        f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to [bold]{args.team}[/bold] as {role.value}"
+    )
 
 
 def cmd_team_remove_player(args: argparse.Namespace) -> None:
@@ -293,7 +303,9 @@ def cmd_team_remove_player(args: argparse.Namespace) -> None:
     conn = get_connection()
     remove_roster_entry(conn, args.team, args.gamertag)
     conn.close()
-    console.print(f"[green]✓[/green] [bold]{args.gamertag}[/bold] removed from [bold]{args.team}[/bold]")
+    console.print(
+        f"[green]✓[/green] [bold]{args.gamertag}[/bold] removed from [bold]{args.team}[/bold]"
+    )
 
 
 def cmd_team_roster(args: argparse.Namespace) -> None:
@@ -334,7 +346,9 @@ def cmd_team_roster(args: argparse.Namespace) -> None:
         console.print("\n[bold]Best Practice Times:[/bold]")
         for o in overlaps[:5]:
             players = o["players"].split(",")
-            console.print(f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} player(s)")
+            console.print(
+                f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} player(s)"
+            )
 
 
 def cmd_avail_set(args: argparse.Namespace) -> None:
@@ -353,7 +367,9 @@ def cmd_avail_set(args: argparse.Namespace) -> None:
     conn = get_connection()
     upsert_availability(conn, avail)
     conn.close()
-    console.print(f"[green]✓[/green] Availability set for [bold]{args.player}[/bold] on {DAY_NAMES[args.day]} {args.start}:00-{args.end}:00")
+    console.print(
+        f"[green]✓[/green] Availability set for [bold]{args.player}[/bold] on {DAY_NAMES[args.day]} {args.start}:00-{args.end}:00"
+    )
 
 
 def cmd_avail_show(args: argparse.Namespace) -> None:
@@ -390,13 +406,17 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
     console.print("")
 
     for player_name, slots in sorted(avail.items()):
-        times = [f"{DAY_NAMES[s.day_of_week]} {s.start_hour:02d}:00-{s.end_hour:02d}:00" for s in slots]
+        times = [
+            f"{DAY_NAMES[s.day_of_week]} {s.start_hour:02d}:00-{s.end_hour:02d}:00" for s in slots
+        ]
         console.print(f"  [cyan]{player_name}[/cyan]: {', '.join(times)}")
 
     if overlaps:
         console.print("\n[bold]Overlapping Slots:[/bold]")
         for o in overlaps[:5]:
-            console.print(f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players")
+            console.print(
+                f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -407,23 +427,29 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
 def _cmd_match_create(args: argparse.Namespace) -> None:
     """Schedule a new match."""
     from esports_manager.db import create_match
+
     match = Match(
         team_name=args.team,
         opponent=args.opponent,
         match_date=args.date,
         match_time=args.time,
-        format=MatchFormat(args.format) if hasattr(MatchFormat, args.format.upper().replace("-", "_")) else MatchFormat.BO3,
+        format=MatchFormat(args.format)
+        if hasattr(MatchFormat, args.format.upper().replace("-", "_"))
+        else MatchFormat.BO3,
         notes=args.notes,
     )
     conn = get_connection()
     match_id = create_match(conn, match)
     conn.close()
-    console.print(f"[green]✓[/green] Match #{match_id} scheduled — [bold]{args.team}[/bold] vs {args.opponent} on {args.date}")
+    console.print(
+        f"[green]✓[/green] Match #{match_id} scheduled — [bold]{args.team}[/bold] vs {args.opponent} on {args.date}"
+    )
 
 
 def _cmd_match_list(args: argparse.Namespace) -> None:
     """List matches."""
-    from esports_manager.db import get_match_result, list_matches
+    from esports_manager.db import list_matches
+
     conn = get_connection()
     matches = list_matches(conn, team_name=args.team, status=args.status)
     conn.close()
@@ -441,7 +467,9 @@ def _cmd_match_list(args: argparse.Namespace) -> None:
     table.add_column("Status")
 
     for m in matches:
-        table.add_row(str(m.id), m.match_date, m.team_name, m.opponent, m.format.value, m.status.value)
+        table.add_row(
+            str(m.id), m.match_date, m.team_name, m.opponent, m.format.value, m.status.value
+        )
     console.print(table)
 
 
@@ -456,7 +484,13 @@ def _cmd_match_record(args: argparse.Namespace) -> None:
         console.print(f"[red]✗[/red] Match #{args.match_id} not found")
         return
 
-    winner = "team" if args.team_score > args.opponent_score else "opponent" if args.opponent_score > args.team_score else "draw"
+    winner = (
+        "team"
+        if args.team_score > args.opponent_score
+        else "opponent"
+        if args.opponent_score > args.team_score
+        else "draw"
+    )
     result = MatchResult(
         match_id=args.match_id,
         team_name=match.team_name,
@@ -470,13 +504,22 @@ def _cmd_match_record(args: argparse.Namespace) -> None:
     record_match_result(conn, result)
     conn.close()
 
-    status_text = f"[green]WON[/green]" if winner == "team" else f"[red]LOST[/red]" if winner == "opponent" else "[yellow]DRAW[/yellow]"
-    console.print(f"[green]✓[/green] Result recorded: {status_text} {args.team_score}-{args.opponent_score}")
+    status_text = (
+        "[green]WON[/green]"
+        if winner == "team"
+        else "[red]LOST[/red]"
+        if winner == "opponent"
+        else "[yellow]DRAW[/yellow]"
+    )
+    console.print(
+        f"[green]✓[/green] Result recorded: {status_text} {args.team_score}-{args.opponent_score}"
+    )
 
 
 def _cmd_match_delete(args: argparse.Namespace) -> None:
     """Delete a match."""
     from esports_manager.db import delete_match
+
     conn = get_connection()
     delete_match(conn, args.match_id)
     conn.close()
@@ -486,6 +529,7 @@ def _cmd_match_delete(args: argparse.Namespace) -> None:
 def _cmd_record(args: argparse.Namespace) -> None:
     """Show team's W/L/T record."""
     from esports_manager.db import get_team_record
+
     conn = get_connection()
     rec = get_team_record(conn, args.team)
     conn.close()
@@ -545,20 +589,30 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
 
     elif args.tournament_command == "register-team":
         conn = get_connection()
-        register_tournament_team(conn, TournamentTeam(
-            tournament_id=args.tournament_id, team_name=args.team, seed=args.seed,
-        ))
+        register_tournament_team(
+            conn,
+            TournamentTeam(
+                tournament_id=args.tournament_id,
+                team_name=args.team,
+                seed=args.seed,
+            ),
+        )
         conn.close()
-        console.print(f"[green]✓[/green] [bold]{args.team}[/bold] registered for tournament #{args.tournament_id}")
+        console.print(
+            f"[green]✓[/green] [bold]{args.team}[/bold] registered for tournament #{args.tournament_id}"
+        )
 
     elif args.tournament_command == "drop-team":
         conn = get_connection()
         unregister_tournament_team(conn, args.tournament_id, args.team)
         conn.close()
-        console.print(f"[green]✓[/green] [bold]{args.team}[/bold] dropped from tournament #{args.tournament_id}")
+        console.print(
+            f"[green]✓[/green] [bold]{args.team}[/bold] dropped from tournament #{args.tournament_id}"
+        )
 
     elif args.tournament_command == "start":
         from esports_manager.bracket import generate_bracket
+
         conn = get_connection()
         teams = list_tournament_teams(conn, args.tournament_id)
         if len(teams) < 2:
@@ -570,10 +624,13 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         save_bracket_slots(conn, args.tournament_id, bracket)
         update_tournament_status(conn, args.tournament_id, "in-progress")
         conn.close()
-        console.print(f"[green]✓[/green] Tournament #{args.tournament_id} started with {len(teams)} teams, {len(bracket)} matches")
+        console.print(
+            f"[green]✓[/green] Tournament #{args.tournament_id} started with {len(teams)} teams, {len(bracket)} matches"
+        )
 
     elif args.tournament_command == "bracket":
         from esports_manager.bracket import get_tournament_winner
+
         conn = get_connection()
         tournament = get_tournament(conn, args.tournament_id)
         slots = load_bracket_slots(conn, args.tournament_id)
@@ -594,10 +651,15 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
 
         # Group by round
         from itertools import groupby
+
         slots_sorted = sorted(slots, key=lambda s: (-s["round"], s["position"]))
         for rnd, group in groupby(slots_sorted, key=lambda s: s["round"]):
             round_slots = list(group)
-            round_name = round_slots[0].get("round_name", f"Round {rnd}") if "round_name" in round_slots[0] else f"Round {rnd}"
+            round_name = (
+                round_slots[0].get("round_name", f"Round {rnd}")
+                if "round_name" in round_slots[0]
+                else f"Round {rnd}"
+            )
             console.print(f"\n[bold]{round_name}[/bold]")
             for s in round_slots:
                 t1 = s["team1_name"] or "TBD"
@@ -611,6 +673,7 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
 
     elif args.tournament_command == "record-result":
         from esports_manager.bracket import advance_winner
+
         conn = get_connection()
         slots = load_bracket_slots(conn, args.tournament_id)
         if not slots:
@@ -621,6 +684,7 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
         save_bracket_slots(conn, args.tournament_id, updated)
         # Check if tournament is complete
         from esports_manager.bracket import is_bracket_complete
+
         if is_bracket_complete(slots):
             update_tournament_status(conn, args.tournament_id, "completed")
             console.print("[green]✓[/green] Tournament completed!")
@@ -668,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
                 cmd_avail_team(args)
         elif args.command == "dashboard":
             from esports_manager.dashboard import serve
+
             serve(host=args.host, port=args.port)
         elif args.command == "match":
             if args.match_command == "create":

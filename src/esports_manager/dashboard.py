@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 
 from esports_manager.db import (
     get_connection,
@@ -44,12 +44,14 @@ def create_app() -> FastAPI:
         result = []
         for t in teams:
             roster = list_roster(conn, t.name)
-            result.append({
-                "name": t.name,
-                "game_title": t.game_title.value,
-                "description": t.description,
-                "roster_count": len(roster),
-            })
+            result.append(
+                {
+                    "name": t.name,
+                    "game_title": t.game_title.value,
+                    "description": t.description,
+                    "roster_count": len(roster),
+                }
+            )
         conn.close()
         return {"teams": result}
 
@@ -77,16 +79,33 @@ def create_app() -> FastAPI:
                 for r in roster
             ],
             "availability": {
-                player: [{"day": DAY_NAMES[a.day_of_week], "hours": f"{a.start_hour:02d}:00-{a.end_hour:02d}:00"} for a in slots]
+                player: [
+                    {
+                        "day": DAY_NAMES[a.day_of_week],
+                        "hours": f"{a.start_hour:02d}:00-{a.end_hour:02d}:00",
+                    }
+                    for a in slots
+                ]
                 for player, slots in avail.items()
             },
             "best_times": [
-                {"day": DAY_NAMES[o["day_of_week"]], "start": o["start_hour"], "end": o["end_hour"], "players": o["player_count"]}
+                {
+                    "day": DAY_NAMES[o["day_of_week"]],
+                    "start": o["start_hour"],
+                    "end": o["end_hour"],
+                    "players": o["player_count"],
+                }
                 for o in overlaps[:5]
             ],
             "matches": [
-                {"id": m.id, "opponent": m.opponent, "match_date": m.match_date,
-                 "match_time": m.match_time, "format": m.format.value, "status": m.status.value}
+                {
+                    "id": m.id,
+                    "opponent": m.opponent,
+                    "match_date": m.match_date,
+                    "match_time": m.match_time,
+                    "format": m.format.value,
+                    "status": m.status.value,
+                }
                 for m in match_list
             ],
         }
@@ -99,10 +118,15 @@ def create_app() -> FastAPI:
         conn.close()
         return {
             "players": [
-                {"name": p.name, "gamertag": p.gamertag, "game_title": p.game_title.value,
-                 "skill_level": p.skill_level.value, "discord": p.discord}
+                {
+                    "name": p.name,
+                    "gamertag": p.gamertag,
+                    "game_title": p.game_title.value,
+                    "skill_level": p.skill_level.value,
+                    "discord": p.discord,
+                }
                 for p in players
-            ]
+            ],
         }
 
     @app.get("/api/players/{gamertag}/availability")
@@ -114,10 +138,14 @@ def create_app() -> FastAPI:
         return {
             "gamertag": gamertag,
             "availability": [
-                {"day": DAY_NAMES[s.day_of_week], "day_num": s.day_of_week,
-                 "start": s.start_hour, "end": s.end_hour}
+                {
+                    "day": DAY_NAMES[s.day_of_week],
+                    "day_num": s.day_of_week,
+                    "start": s.start_hour,
+                    "end": s.end_hour,
+                }
                 for s in slots
-            ]
+            ],
         }
 
     # Dashboard pages
@@ -138,17 +166,23 @@ def create_app() -> FastAPI:
     @app.get("/api/tournaments")
     def api_tournaments():
         """List tournaments."""
-        from esports_manager.db import list_tournaments, list_tournament_teams
+        from esports_manager.db import list_tournament_teams, list_tournaments
+
         conn = _conn()
         tournaments = list_tournaments(conn)
         result = []
         for t in tournaments:
             teams = list_tournament_teams(conn, t.id)
-            result.append({
-                "id": t.id, "name": t.name, "game_title": t.game_title,
-                "status": t.status.value, "max_teams": t.max_teams,
-                "team_count": len(teams),
-            })
+            result.append(
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "game_title": t.game_title,
+                    "status": t.status.value,
+                    "max_teams": t.max_teams,
+                    "team_count": len(teams),
+                }
+            )
         conn.close()
         return {"tournaments": result}
 
@@ -162,6 +196,7 @@ def create_app() -> FastAPI:
 def serve(host: str = "127.0.0.1", port: int = 8555) -> None:
     """Start the dashboard server."""
     import uvicorn
+
     app = create_app()
     print(f"  eSports Manager Dashboard -> http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")

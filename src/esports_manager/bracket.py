@@ -35,6 +35,7 @@ def generate_bracket(teams: list[str]) -> list[dict[str, Any]]:
             team1: str (empty if bye)
             team2: str (empty if bye)
             round_name: str
+
     """
     count = len(teams)
     if count < 2:
@@ -63,25 +64,29 @@ def generate_bracket(teams: list[str]) -> list[dict[str, Any]]:
         if rnd == total_r:
             # First round — use seeded teams
             for pos in range(matches_in_round):
-                bracket.append({
-                    "round": total_r - rnd,
-                    "position": pos,
-                    "team1": seeded[pos * 2] if seeded[pos * 2] else "",
-                    "team2": seeded[pos * 2 + 1] if seeded[pos * 2 + 1] else "",
-                    "winner": "",
-                    "round_name": _round_name(total_r - rnd, total_r),
-                })
+                bracket.append(
+                    {
+                        "round": total_r - rnd,
+                        "position": pos,
+                        "team1": seeded[pos * 2] if seeded[pos * 2] else "",
+                        "team2": seeded[pos * 2 + 1] if seeded[pos * 2 + 1] else "",
+                        "winner": "",
+                        "round_name": _round_name(total_r - rnd, total_r),
+                    }
+                )
         else:
             # Later rounds — slots are placeholders
             for pos in range(matches_in_round):
-                bracket.append({
-                    "round": total_r - rnd,
-                    "position": pos,
-                    "team1": "",
-                    "team2": "",
-                    "winner": "",
-                    "round_name": _round_name(total_r - rnd, total_r),
-                })
+                bracket.append(
+                    {
+                        "round": total_r - rnd,
+                        "position": pos,
+                        "team1": "",
+                        "team2": "",
+                        "winner": "",
+                        "round_name": _round_name(total_r - rnd, total_r),
+                    }
+                )
 
     # Fix first round for non-power-of-2: byes auto-advance
     # Teams facing a bye (empty opponent) get an auto-win
@@ -128,6 +133,7 @@ def advance_winner(
 
     Returns:
         Updated bracket.
+
     """
     slots = list(bracket)
 
@@ -185,6 +191,6 @@ def get_tournament_winner(bracket: list[dict[str, Any]]) -> str | None:
     final_slot = max(final, key=lambda s: s["round"])
     if final_slot["winner"] == "team1":
         return final_slot["team1"]
-    elif final_slot["winner"] == "team2":
+    if final_slot["winner"] == "team2":
         return final_slot["team2"]
     return None
