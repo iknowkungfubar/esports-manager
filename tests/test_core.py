@@ -407,6 +407,7 @@ class TestCLI:
         )
         assert args.command == "availability"
         assert args.avail_command == "set"
+        assert args.player == "p1"
 
     def test_availability_show_parser(self):
         from esports_manager.cli import _build_parser
@@ -415,6 +416,7 @@ class TestCLI:
         args = p.parse_args(["availability", "show", "--player", "p1"])
         assert args.command == "availability"
         assert args.avail_command == "show"
+        assert args.player == "p1"
 
     def test_dashboard_parser(self):
         from esports_manager.cli import _build_parser
@@ -554,6 +556,9 @@ class TestMatchCRUD:
         args = p.parse_args(["match", "create", "T1", "--opponent", "T2", "--date", "2026-07-10"])
         assert args.command == "match"
         assert args.match_command == "create"
+        assert args.team == "T1"
+        assert args.opponent == "T2"
+        assert args.date == "2026-07-10"
 
     def test_record_cli_parser(self):
         from esports_manager.cli import _build_parser

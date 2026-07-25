@@ -145,13 +145,13 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     p_avail_sub = p_avail.add_subparsers(dest="avail_command", required=True)
 
     aset = p_avail_sub.add_parser("set", help="Set availability for a player")
-    aset.add_argument("player", help="Player gamertag")
+    aset.add_argument("--player", required=True, help="Player gamertag")
     aset.add_argument("--day", type=int, required=True, choices=range(7), help="0=Mon..6=Sun")
     aset.add_argument("--start", type=int, required=True, choices=range(24), help="Start hour 0-23")
     aset.add_argument("--end", type=int, required=True, choices=range(24), help="End hour 0-23")
 
     ash = p_avail_sub.add_parser("show", help="Show player availability")
-    ash.add_argument("player", help="Player gamertag")
+    ash.add_argument("--player", required=True, help="Player gamertag")
 
     at = p_avail_sub.add_parser("team", help="Show team availability overview")
     at.add_argument("team", help="Team name")
@@ -167,8 +167,8 @@ def _build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
 
     mc = p_match_sub.add_parser("create", help="Schedule a match")
     mc.add_argument("team", help="Team name")
-    mc.add_argument("opponent", help="Opponent name")
-    mc.add_argument("date", help="Match date (YYYY-MM-DD)")
+    mc.add_argument("--opponent", required=True, help="Opponent name")
+    mc.add_argument("--date", required=True, help="Match date (YYYY-MM-DD)")
     mc.add_argument("--time", default="", help="Match time (HH:MM)")
     mc.add_argument(
         "--format",
