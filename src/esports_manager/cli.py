@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from itertools import groupby
 
 from rich.console import Console
 from rich.table import Table
@@ -70,7 +71,7 @@ console = Console()
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser() -> argparse.ArgumentParser:  # noqa: PLR0915
     parser = argparse.ArgumentParser(
         prog="esports",
         description="eSports Manager — team/club management platform",
@@ -365,12 +366,8 @@ def cmd_team_add_player(args: argparse.Namespace) -> None:
     add_roster_entry(conn, entry)
     conn.close()
     console.print(
-        (
-            (
-                f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to "
-                f"[bold]{args.team}[/bold] as {args.role}",
-            )
-        ),
+        f"[green]✓[/green] [bold]{args.gamertag}[/bold] added to "
+        f"[bold]{args.team}[/bold] as {args.role}",
     )
 
 
@@ -420,13 +417,9 @@ def cmd_team_roster(args: argparse.Namespace) -> None:
         console.print("\n[bold]Best Practice Times:[/bold]")
         for o in overlaps[:5]:
             console.print(
-                (
-                    (
-                    f"  {DAY_NAMES[o['day_of_week']]} "
-                    f"{o['start_hour']:02d}:00-{o['end_hour']:02d}:00 "
-                    f"— {o['player_count']} player(s)",
-                )
-                ),
+                f"  {DAY_NAMES[o['day_of_week']]} "
+                f"{o['start_hour']:02d}:00-{o['end_hour']:02d}:00 "
+                f"— {o['player_count']} player(s)",
             )
 
 
@@ -497,9 +490,8 @@ def cmd_avail_team(args: argparse.Namespace) -> None:
         console.print("\n[bold]Overlapping Slots:[/bold]")
         for o in overlaps[:5]:
             console.print(
-                (
-                    f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-{o['end_hour']:02d}:00 — {o['player_count']} players",
-                ),
+                f"  {DAY_NAMES[o['day_of_week']]} {o['start_hour']:02d}:00-"
+                f"{o['end_hour']:02d}:00 — {o['player_count']} players",
             )
 
 
@@ -619,7 +611,7 @@ def _cmd_record(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _cmd_tournament(args: argparse.Namespace) -> None:
+def _cmd_tournament(args: argparse.Namespace) -> None:  # noqa: C901, PLR0912, PLR0915
     if args.tournament_command == "create":
         t = Tournament(
             name=args.name,
@@ -714,8 +706,6 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
             )
             return
 
-        from itertools import groupby
-
         slots_sorted = sorted(slots, key=lambda s: (-s["round"], s["position"]))
         for rnd, group in groupby(slots_sorted, key=lambda s: s["round"]):
             round_slots = list(group)
@@ -755,7 +745,7 @@ def _cmd_tournament(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912
     parser = _build_parser()
     args = parser.parse_args(argv)
 
@@ -789,7 +779,7 @@ def main(argv: list[str] | None = None) -> int:
                 cmd_avail_team(args)
 
         elif args.command == "dashboard":
-            from esports_manager.dashboard import serve
+            from esports_manager.dashboard import serve  # noqa: PLC0415
 
             serve(host=args.host, port=args.port)
 
@@ -812,7 +802,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             parser.print_help()
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         console.print(f"[red]✗ Unexpected error: {e}[/red]")
         return 1
 

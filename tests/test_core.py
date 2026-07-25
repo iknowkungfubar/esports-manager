@@ -1,10 +1,16 @@
+# Copyright (c) 2024-2025 iknowkungfubar
+# Licensed under the MIT License. See LICENSE file for details.
+
 """Tests for eSports Manager."""
 
 from __future__ import annotations
 
 import os
 import sqlite3
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
@@ -40,15 +46,15 @@ class TestModels:
         assert a.start_hour == 18
 
     def test_availability_invalid_day(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="day_of_week must be 0-6"):
             Availability(player_name="p1", day_of_week=7, start_hour=18, end_hour=21)
 
     def test_availability_invalid_hour(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="start_hour must be 0-23"):
             Availability(player_name="p1", day_of_week=0, start_hour=25, end_hour=26)
 
     def test_availability_start_after_end(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="start_hour must be before end_hour"):
             Availability(player_name="p1", day_of_week=0, start_hour=21, end_hour=18)
 
     def test_team_defaults(self):
@@ -58,7 +64,10 @@ class TestModels:
 
     def test_roster_entry(self):
         r = RosterEntry(
-            team_name="T1", player_name="Alice", gamertag="alice#1234", role=PlayerRole.CAPTAIN
+            team_name="T1",
+            player_name="Alice",
+            gamertag="alice#1234",
+            role=PlayerRole.CAPTAIN,
         )
         assert r.role == PlayerRole.CAPTAIN
 
@@ -101,7 +110,8 @@ class TestPlayerCRUD:
 
         upsert_player(conn, Player(name="Bob", gamertag="bob#5678"))
         upsert_player(
-            conn, Player(name="Robert", gamertag="bob#5678", skill_level=SkillLevel.ADVANCED)
+            conn,
+            Player(name="Robert", gamertag="bob#5678", skill_level=SkillLevel.ADVANCED),
         )
         got = get_player(conn, "bob#5678")
         assert got.name == "Robert"
@@ -163,7 +173,8 @@ class TestRosterCRUD:
         upsert_player(conn, Player(name="Alice", gamertag="alice#1"))
         upsert_team(conn, Team(name="Team A"))
         add_roster_entry(
-            conn, RosterEntry(team_name="Team A", player_name="Alice", gamertag="alice#1")
+            conn,
+            RosterEntry(team_name="Team A", player_name="Alice", gamertag="alice#1"),
         )
         roster = list_roster(conn, "Team A")
         assert len(roster) == 1
@@ -192,7 +203,10 @@ class TestRosterCRUD:
         add_roster_entry(
             conn,
             RosterEntry(
-                team_name="T", player_name="Cap", gamertag="cap#1", role=PlayerRole.CAPTAIN
+                team_name="T",
+                player_name="Cap",
+                gamertag="cap#1",
+                role=PlayerRole.CAPTAIN,
             ),
         )
         assert list_roster(conn, "T")[0].role == PlayerRole.CAPTAIN
@@ -223,10 +237,12 @@ class TestAvailabilityCRUD:
         add_roster_entry(conn, RosterEntry(team_name="T", player_name="A", gamertag="a#1"))
         add_roster_entry(conn, RosterEntry(team_name="T", player_name="B", gamertag="b#2"))
         upsert_availability(
-            conn, Availability(player_name="a#1", day_of_week=0, start_hour=18, end_hour=21)
+            conn,
+            Availability(player_name="a#1", day_of_week=0, start_hour=18, end_hour=21),
         )
         upsert_availability(
-            conn, Availability(player_name="b#2", day_of_week=0, start_hour=18, end_hour=21)
+            conn,
+            Availability(player_name="b#2", day_of_week=0, start_hour=18, end_hour=21),
         )
         avail = get_team_availability(conn, "T")
         assert len(avail) == 2
@@ -246,10 +262,12 @@ class TestAvailabilityCRUD:
         add_roster_entry(conn, RosterEntry(team_name="T", player_name="A", gamertag="a#1"))
         add_roster_entry(conn, RosterEntry(team_name="T", player_name="B", gamertag="b#2"))
         upsert_availability(
-            conn, Availability(player_name="a#1", day_of_week=0, start_hour=18, end_hour=21)
+            conn,
+            Availability(player_name="a#1", day_of_week=0, start_hour=18, end_hour=21),
         )
         upsert_availability(
-            conn, Availability(player_name="b#2", day_of_week=0, start_hour=18, end_hour=21)
+            conn,
+            Availability(player_name="b#2", day_of_week=0, start_hour=18, end_hour=21),
         )
         overlaps = get_overlapping_availability(conn, "T")
         assert len(overlaps) >= 1
@@ -296,7 +314,8 @@ class TestDashboardAPI:
         upsert_player(conn, Player(name="Alice", gamertag="alice#1", game_title=GameTitle.VALORANT))
         upsert_team(conn, Team(name="Valorants", game_title=GameTitle.VALORANT))
         add_roster_entry(
-            conn, RosterEntry(team_name="Valorants", player_name="Alice", gamertag="alice#1")
+            conn,
+            RosterEntry(team_name="Valorants", player_name="Alice", gamertag="alice#1"),
         )
         conn.close()
 
@@ -355,7 +374,7 @@ class TestCLI:
 
         p = _build_parser()
         args = p.parse_args(
-            ["player", "create", "Alice", "--gamertag", "alice#1", "--game", "valorant"]
+            ["player", "create", "Alice", "--gamertag", "alice#1", "--game", "valorant"],
         )
         assert args.command == "player"
         assert args.player_command == "create"
@@ -384,7 +403,7 @@ class TestCLI:
 
         p = _build_parser()
         args = p.parse_args(
-            ["availability", "set", "--player", "p1", "--day", "0", "--start", "18", "--end", "21"]
+            ["availability", "set", "--player", "p1", "--day", "0", "--start", "18", "--end", "21"],
         )
         assert args.command == "availability"
         assert args.avail_command == "set"
@@ -419,14 +438,24 @@ class TestMatchModel:
 
     def test_match_result_win(self):
         r = MatchResult(
-            match_id=1, team_name="T1", opponent="T2", team_score=3, opponent_score=1, winner="team"
+            match_id=1,
+            team_name="T1",
+            opponent="T2",
+            team_score=3,
+            opponent_score=1,
+            winner="team",
         )
         assert r.team_won() is True
         assert r.is_draw() is False
 
     def test_match_result_draw(self):
         r = MatchResult(
-            match_id=2, team_name="T1", opponent="T2", team_score=2, opponent_score=2, winner="draw"
+            match_id=2,
+            team_name="T1",
+            opponent="T2",
+            team_score=2,
+            opponent_score=2,
+            winner="draw",
         )
         assert r.team_won() is False
         assert r.is_draw() is True
@@ -547,7 +576,7 @@ class TestBracketEngine:
         teams = ["TeamA", "TeamB", "TeamC", "TeamD"]
         bracket = generate_bracket(teams)
         assert len(bracket) >= 3  # 2 semis + 1 final
-        rounds = set(s["round"] for s in bracket)
+        rounds = {s["round"] for s in bracket}
         assert 0 in rounds  # First round exists
 
     def test_generate_8_team_bracket(self):

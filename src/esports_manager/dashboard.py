@@ -5,8 +5,11 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import sqlite3
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -154,7 +157,7 @@ def _tournaments_response() -> dict:
     return {"tournaments": result}
 
 
-def create_app() -> FastAPI:
+def create_app() -> FastAPI:  # noqa: C901
     app = FastAPI(title="eSports Manager", version="0.1.0")
 
     @app.get("/api/teams")

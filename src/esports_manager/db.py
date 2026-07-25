@@ -203,7 +203,7 @@ def list_players(
         params.append(game_title)
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = conn.execute(
-        f"SELECT * FROM players{where} ORDER BY name",
+        f"SELECT * FROM players{where} ORDER BY name",  # noqa: S608
         params,
     ).fetchall()
     return [_row_to_player(r) for r in rows]
@@ -495,7 +495,7 @@ def list_matches(
         params.append(status)
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
     rows = conn.execute(
-        f"SELECT * FROM matches{where} ORDER BY match_date DESC, match_time DESC",
+        f"SELECT * FROM matches{where} ORDER BY match_date DESC, match_time DESC",  # noqa: S608
         params,
     ).fetchall()
     return [_row_to_match(r) for r in rows]
@@ -556,7 +556,8 @@ def record_match_result(conn: sqlite3.Connection, result: MatchResult) -> None:
 def get_match_result(conn: sqlite3.Connection, match_id: int) -> MatchResult | None:
     """Get the result for a match."""
     row = conn.execute(
-        "SELECT * FROM match_results WHERE match_id = ?", (match_id,),
+        "SELECT * FROM match_results WHERE match_id = ?",
+        (match_id,),
     ).fetchone()
     if not row:
         return None
@@ -600,7 +601,8 @@ def create_tournament(conn: sqlite3.Connection, tournament: Tournament) -> int:
 def get_tournament(conn: sqlite3.Connection, tournament_id: int) -> Tournament | None:
     """Get a tournament by ID."""
     row = conn.execute(
-        "SELECT * FROM tournaments WHERE id = ?", (tournament_id,),
+        "SELECT * FROM tournaments WHERE id = ?",
+        (tournament_id,),
     ).fetchone()
     return _row_to_tournament(row) if row else None
 
@@ -614,7 +616,9 @@ def list_tournaments(conn: sqlite3.Connection) -> list[Tournament]:
 
 
 def update_tournament_status(
-    conn: sqlite3.Connection, tournament_id: int, status: TournamentStatus,
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    status: TournamentStatus,
 ) -> None:
     """Update tournament status."""
     conn.execute(
@@ -642,7 +646,8 @@ def _row_to_tournament(row: sqlite3.Row) -> Tournament:
 
 
 def register_tournament_team(
-    conn: sqlite3.Connection, team: TournamentTeam,
+    conn: sqlite3.Connection,
+    team: TournamentTeam,
 ) -> None:
     """Register a team for a tournament."""
     conn.execute(
@@ -654,7 +659,9 @@ def register_tournament_team(
 
 
 def unregister_tournament_team(
-    conn: sqlite3.Connection, tournament_id: int, team_name: str,
+    conn: sqlite3.Connection,
+    tournament_id: int,
+    team_name: str,
 ) -> None:
     """Remove a team from a tournament."""
     conn.execute(
@@ -665,7 +672,8 @@ def unregister_tournament_team(
 
 
 def list_tournament_teams(
-    conn: sqlite3.Connection, tournament_id: int,
+    conn: sqlite3.Connection,
+    tournament_id: int,
 ) -> list[TournamentTeam]:
     """List teams registered for a tournament."""
     rows = conn.execute(
@@ -690,7 +698,8 @@ def save_bracket_slots(
 ) -> None:
     """Save all bracket slots for a tournament."""
     conn.execute(
-        "DELETE FROM bracket_slots WHERE tournament_id = ?", (tournament_id,),
+        "DELETE FROM bracket_slots WHERE tournament_id = ?",
+        (tournament_id,),
     )
     for s in slots:
         conn.execute(
@@ -712,7 +721,8 @@ def save_bracket_slots(
 
 
 def load_bracket_slots(
-    conn: sqlite3.Connection, tournament_id: int,
+    conn: sqlite3.Connection,
+    tournament_id: int,
 ) -> list[dict[str, Any]]:
     """Load all bracket slots for a tournament."""
     rows = conn.execute(
