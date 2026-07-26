@@ -35,7 +35,6 @@ jobs:
       - name: Run Dependabot updates
         run: |
           uv run safety check || pip install safety
-          uv run dependabot-filter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
