@@ -1,12 +1,29 @@
+# Environment variables
+.env
+.env.*
+
+# .gitignore
+
+# Development
+
+# Testing and coverage
+.coverage
+coverage_html/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log
+
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
-.coverage
-coverage_html/
-.pytest_cache/
-.venv/
-uv.lock
-*.db
+
+# Distribution
+*.egg
 
 # AI Agent Artifacts — security: do not commit
 CLAUDE.md
@@ -40,3 +57,7 @@ htmlcov/
 
 # Hermes
 .hermes/
+
+# .hermes
+
+# test
