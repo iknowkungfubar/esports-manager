@@ -19,9 +19,12 @@ esports-manager/
 ├── src/esports_manager/
 │   ├── cli.py          # CLI interface (player, team, availability commands)
 │   ├── dashboard.py    # Web UI dashboard (FastAPI + Jinja2)
+│   ├── bracket.py      # Tournament bracket generation
 │   ├── models.py       # Pydantic data models (Player, Team, Role)
-│   └── store.py        # SQLite data persistence
-├── tests/              # pytest test suite
+│   ├── db.py           # SQLite data persistence
+│   └── templates/      # Jinja2 templates (dashboard, team, tournaments)
+├── tests/
+│   └── test_core.py    # pytest test suite
 ├── pyproject.toml      # Project configuration
 └── README.md           # This file
 ```
