@@ -18,11 +18,11 @@ Manage players, rosters, availability, and practice scheduling — all from the 
 esports-manager/
 ├── src/esports_manager/
 │   ├── cli.py          # CLI interface (player, team, availability commands)
-│   ├── dashboard.py    # Web UI dashboard (FastAPI + Jinja2)
+│   ├── dashboard.py    # Web UI dashboard (FastAPI + HTML templates)
 │   ├── bracket.py      # Tournament bracket generation
 │   ├── models.py       # Pydantic data models (Player, Team, Role)
 │   ├── db.py           # SQLite data persistence
-│   └── templates/      # Jinja2 templates (dashboard, team, tournaments)
+│   └── templates/      # HTML templates (dashboard, team, tournaments)
 ├── tests/
 │   └── test_core.py    # pytest test suite
 ├── pyproject.toml      # Project configuration
